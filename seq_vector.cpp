@@ -1,42 +1,31 @@
-// Problems: capacity seems off in some cases (seem correct when set initially,
-// but wrong when set as a result of pushback). Check reserve()
-// Also check what popback() is returning
+// Problems: capacity seems off in some cases (see test below: capacity should be 132, not 126)
 
 #include "seq_vector.h"
 #include <iostream>
 #include <cmath>
 
 int main() {
-	seq_vector vec (25);
-	vec.pushback(0);
-	vec.pushback(1);
-	vec.pushback(2);
-	vec.pushback(3);
-	vec.pushback(4);
-	vec.pushback(5);
-	vec.pushback(6);
-	vec.pushback(7);
-	vec.pushback(8);
-	vec.pushback(9);
-	vec.pushback(10);
-	vec.pushback(11);
-	vec.write(0, 56);
-	vec.write(10, 234);
-	int retval = vec.popback();
-	std::cout << retval << std::endl;
-	std::cout << vec.size() << std::endl;
-	std::cout << vec.capacity() << std::endl;
-	std::cout << vec.read(0) << std::endl;
-	std::cout << vec.read(1) << std::endl;
-	std::cout << vec.read(2) << std::endl;
-	std::cout << vec.read(3) << std::endl;
-	std::cout << vec.read(4) << std::endl;
-	std::cout << vec.read(5) << std::endl;
-	std::cout << vec.read(6) << std::endl;
-	std::cout << vec.read(7) << std::endl;
-	std::cout << vec.read(8) << std::endl;
-	std::cout << vec.read(9) << std::endl;
-	std::cout << vec.read(10) << std::endl;
+	seq_vector vec (1);
+	for (int i=0; i<100; i++) {
+		vec.pushback(i);
+	}
+
+	std::cout << "Size: " + std::to_string(vec.size()) << std::endl;
+	std::cout << "Capacity: " + std::to_string(vec.capacity()) << std::endl;
+
+	std::cout << "Element 0: " + std::to_string(vec.read(0)) << std::endl;
+	std::cout << "Element 27: " + std::to_string(vec.read(27)) << std::endl;
+	std::cout << "Element 13: " + std::to_string(vec.read(13)) << std::endl;
+	std::cout << "Element 14: " + std::to_string(vec.read(14)) << std::endl;
+	std::cout << "Element 99: " + std::to_string(vec.read(99)) << std::endl;
+
+	int val = vec.popback();
+	std::cout << "Pop return value: " + std::to_string(val) << std::endl;
+	std::cout << "Size after popping: " + std::to_string(vec.size()) << std::endl;
+	std::cout << "Capacity after popping: " + std::to_string(vec.capacity()) << std::endl;
+
+	vec.write(84, 12345);
+	std::cout << "Value of index 84 after writing 12345: " + std::to_string(vec.read(84)) << std::endl;
 }
 
 seq_vector::seq_vector() {
@@ -68,15 +57,15 @@ void seq_vector::pushback(int val) {
 }
 
 int seq_vector::popback() {
+	_size--;
+
 	int i, j;
 	// calculate level to put this element at
 	i = floor(log2(_size + 2)) - 1;
 	// get element at that level to put this element at
 	j = _size - (pow(2, i+1) - 2);
 
-	int ret_val = array[i][j].val;
-	_size--;
-	return ret_val;
+	return array[i][j].val;
 }
 
 void seq_vector::reserve(int n) {
