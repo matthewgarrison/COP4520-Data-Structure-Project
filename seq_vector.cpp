@@ -1,5 +1,3 @@
-// Problems: capacity seems off in some cases (see test below: capacity should be 132, not 126)
-
 #include "seq_vector.h"
 #include <iostream>
 #include <cmath>
