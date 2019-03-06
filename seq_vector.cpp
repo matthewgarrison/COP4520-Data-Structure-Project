@@ -33,6 +33,7 @@ seq_vector::seq_vector() {
 seq_vector::seq_vector(int n) {
 	_size = 0;
 	_active_levels = 0;
+	_capacity = 0;
 	// calculate max capacity of vector based on number of levels allocated
 	_max_capacity = pow(2, NUM_LEVELS + 1) - 2;
 	array = (node_t **)calloc(NUM_LEVELS, sizeof(node_t *));
