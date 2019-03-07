@@ -1,9 +1,12 @@
 #include "seq_vector.h"
 #include <iostream>
 #include <cmath>
+#include <vector>
 
 int main() {
-	seq_vector vec (1);
+	std::cout << "Our vector:" << std::endl;
+	seq_vector vec (0);
+	vec.reserve(200);
 	for (int i=0; i<100; i++) {
 		vec.pushback(i);
 	}
@@ -24,6 +27,31 @@ int main() {
 
 	vec.write(84, 12345);
 	std::cout << "Value of index 84 after writing 12345: " + std::to_string(vec.read(84)) << std::endl;
+
+	std::cout << "----------------------------------------------------" << std::endl << "std::vector:" << std::endl;
+
+	std::vector<int> vec2 ;
+	vec2.reserve(200);
+	for (int i=0; i<100; i++) {
+		vec2.push_back(i);
+	}
+
+	std::cout << "Size: " + std::to_string(vec2.size()) << std::endl;
+	std::cout << "Capacity: " + std::to_string(vec2.capacity()) << std::endl;
+
+	std::cout << "Element 0: " + std::to_string(vec2[0]) << std::endl;
+	std::cout << "Element 27: " + std::to_string(vec2[27]) << std::endl;
+	std::cout << "Element 13: " + std::to_string(vec2[13]) << std::endl;
+	std::cout << "Element 14: " + std::to_string(vec2[14]) << std::endl;
+	std::cout << "Element 99: " + std::to_string(vec2[99]) << std::endl;
+
+	val = vec2.back(); vec2.pop_back();
+	std::cout << "Pop return value: " + std::to_string(val) << std::endl;
+	std::cout << "Size after popping: " + std::to_string(vec2.size()) << std::endl;
+	std::cout << "Capacity after popping: " + std::to_string(vec2.capacity()) << std::endl;
+
+	vec2[84] = 12345;
+	std::cout << "Value of index 84 after writing 12345: " + std::to_string(vec2[84]) << std::endl;
 }
 
 seq_vector::seq_vector() {
