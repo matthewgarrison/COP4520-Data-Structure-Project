@@ -54,13 +54,14 @@ int main() {
 	std::cout << "Value of index 84 after writing 12345: " + std::to_string(vec2[84]) << std::endl;
 }
 
+// default constructor: creates a vector with capacity 128
 seq_vector::seq_vector() {
 	seq_vector(128);
 }
 
+// creates a vector with an initial capacity of n
 seq_vector::seq_vector(int n) {
 	_size = 0;
-	_active_levels = 0;
 	_capacity = 0;
 	// calculate max capacity of vector based on number of levels allocated
 	_max_capacity = pow(2, NUM_LEVELS + 1) - 2;
@@ -68,39 +69,32 @@ seq_vector::seq_vector(int n) {
 	seq_vector::reserve(n);
 }
 
+// adds val to the end of the vector; increments size
 void seq_vector::pushback(int val) {
+	// increase capacity if inserting this element would put vector size past capacity
 	if (_size >= _capacity) {
 		seq_vector::reserve(_size + 1);
 	}
 
-	int i, j;
-	// calculate level to put this element at
-	i = floor(log2(_size + 2)) - 1;
-	// get element at that level to put this element at
-	j = _size - (pow(2, i+1) - 2);
-
-	array[i][j].val = val;
+	array[get_bucket(_size)][get_idx_within_bucket(_size)].val = val;
 	_size++;
 }
 
+// removes and returns the last element in the vector; decrements size
 int seq_vector::popback() {
 	_size--;
 
-	int i, j;
-	// calculate level to put this element at
-	i = floor(log2(_size + 2)) - 1;
-	// get element at that level to put this element at
-	j = _size - (pow(2, i+1) - 2);
-
-	return array[i][j].val;
+	return array[get_bucket(_size)][get_idx_within_bucket(_size)].val;
 }
 
+// increases the capacity of the vector to be able to hold n elements
 void seq_vector::reserve(int n) {
 	if (n > _max_capacity) {
 		throw std::out_of_range(std::to_string(n) + " elements is too many to fit " +
 		"in this vector (max is " + std::to_string(_max_capacity) + ").");
 	}
 
+	// don't do anything if vector can already hold n elements
 	if (n <= _capacity) {
 		return;
 	}
@@ -108,52 +102,88 @@ void seq_vector::reserve(int n) {
 	// if vector's capacity was zero, allocate first level before going in to
 	// next loop since we need a level to base the capacity of the rest off of
 	if (_capacity <= 0) {
-		_active_levels = 1;
 		_capacity = 2;
 		array[0] = (node_t *)calloc(2, sizeof(node_t));
 	}
 
-	// allocate arrays in deeper levels until the vector can hold at least n elements
-	int curr_capacity = _capacity, prev_level_capacity = pow(2, _active_levels), curr_level_capacity;
-	while (curr_capacity < n) {
-		// allocate double the number of elements as previous level could hold
-		curr_level_capacity = prev_level_capacity * 2;
-		prev_level_capacity = curr_level_capacity;
-		array[_active_levels++] = (node_t *)calloc(curr_level_capacity, sizeof(node_t));
-		curr_capacity += curr_level_capacity;
-	}
+	// the index of the largest in-use bucket.
+	int i = get_bucket(_size - 1);
+	if (i < 0) i = 0;
 
-	_capacity = curr_capacity;
+	// add new buckets until we have enough buckets for n elements.
+	while (i < get_bucket(n - 1)) {
+		i++;
+		seq_vector::allocate_bucket(i);
+		_capacity = (2 * _capacity) + 2;
+	}
 }
 
+// returns the value at the given index (if the index is valid)
 int seq_vector::read(int idx) {
 	if (idx >= _size) throw std::out_of_range("read() with index " + std::to_string(idx) + " out of bounds.");
 
-	int i, j;
-	// calculate level to put this element at
-	i = floor(log2(idx + 2)) - 1;
-	// get element at that level to put this element at
-	j = idx - (pow(2, i+1) - 2);
-
-	return array[i][j].val;
+	return array[get_bucket(idx)][get_idx_within_bucket(idx)].val;
 }
 
+// writes the given value to the given index (if the index is valid)
 void seq_vector::write(int idx, int val) {
 	if (idx >= _size) throw std::out_of_range("write() with index " + std::to_string(idx) + " out of bounds.");
 
-	int i, j;
-	// calculate level to put this element at
-	i = floor(log2(idx + 2)) - 1;
-	// get element at that level to put this element at
-	j = idx - (pow(2, i+1) - 2);
-
-	array[i][j].val = val;
+	array[get_bucket(idx)][get_idx_within_bucket(idx)].val = val;
 }
 
+// returns the current size of the vector
 int seq_vector::size() {
 	return _size;
 }
 
+// returns the current capacity of the vector
 int seq_vector::capacity() {
 	return _capacity;
+}
+
+// allocate a bucket at the given index of the two-level array
+void seq_vector::allocate_bucket(int bucketIdx) {
+	int bucketSize = 1 << (bucketIdx + seq_vector::highest_bit(FBS));
+	array[bucketIdx] = (node_t *)calloc(bucketSize, sizeof(node_t));
+}
+
+// returns the index of the bucket for i (level zero of the array).
+int seq_vector::get_bucket(int i) {
+	int pos = i + FBS;
+	int hiBit = seq_vector::highest_bit(pos);
+	return hiBit - seq_vector::highest_bit(FBS);
+}
+// returns the index within the bucket for i (level one of the array).
+int seq_vector::get_idx_within_bucket(int i) {
+	int pos = i + FBS;
+	int hiBit = seq_vector::highest_bit(pos);
+	return pos ^ (1 << hiBit);
+}
+
+// returns the index of the highest one bit. eg. highest_bit(8) = 3
+int seq_vector::highest_bit(int n) {
+	return seq_vector::number_of_trailing_zeros(seq_vector::highest_one_bit(n));
+}
+
+// from source code for Java Integer class
+int seq_vector::number_of_trailing_zeros(unsigned int i) {
+	int y;
+	if (i == 0) return 32;
+	int n = 31;
+	y = i <<16; if (y != 0) { n = n -16; i = y; }
+	y = i << 8; if (y != 0) { n = n - 8; i = y; }
+	y = i << 4; if (y != 0) { n = n - 4; i = y; }
+	y = i << 2; if (y != 0) { n = n - 2; i = y; }
+	return n - ((i << 1) >> 31);
+}
+
+// from source code for Java Integer class
+int seq_vector::highest_one_bit(unsigned int i) {
+	i |= (i >>  1);
+	i |= (i >>  2);
+	i |= (i >>  4);
+	i |= (i >>  8);
+	i |= (i >> 16);
+	return i - (i >> 1);
 }
