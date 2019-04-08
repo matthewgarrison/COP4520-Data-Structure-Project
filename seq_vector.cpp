@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cmath>
 #include <vector>
+#include <string>
 
 int main() {
 	std::cout << "Our vector:" << std::endl;
