@@ -1,24 +1,121 @@
-#include "stm_vector.h"
+#include <cstdlib>
 #include <iostream>
+#include <signal.h>
+#include <pthread.h>
+#include <api/api.hpp>
+#include <common/platform.hpp>
+#include <common/locks.hpp>
+#include "bmconfig.hpp"
+#include "../include/api/api.hpp"
+#include "stm_vector.h"
 #include <cmath>
-#include <vector>
+using namespace std;
 
-// default constructor: creates a vector with capacity 128
-stm_vector::stm_vector() {
-	stm_vector(128);
+const int THREAD_COUNT = 4;
+const int NUM_TRANSACTIONS = 100000;
+
+Config::Config() :
+    bmname(""),
+    duration(1),
+    execute(0),
+    threads(THREAD_COUNT),
+    nops_after_tx(0),
+    elements(256),
+    lookpct(34),
+    inspct(66),
+    sets(1),
+    ops(1),
+    time(0),
+    running(true),
+    txcount(0)
+{
 }
 
+Config CFG TM_ALIGN(64);
+
+void* run_thread(void* arg) {
+    // each thread must be initialized before running transactions
+    TM_THREAD_INIT();
+    stm_vector *vec = reinterpret_cast<stm_vector*>(arg);
+
+    vec->pushback(1);
+
+//    int val;
+//    for(int i=0; i<NUM_TRANSACTIONS; i++) {
+//        std::cout << "Push value: " + std::to_string(i) << std::endl;
+//        vec.pushback(i);
+//        val = vec.popback();
+//      	std::cout << "Pop return value: " + std::to_string(val) << std::endl;
+//    }
+
+    TM_THREAD_SHUTDOWN();
+}
+
+int main(int argc, char** argv) {
+    TM_SYS_INIT();
+
+    // original thread must be initalized also
+    TM_THREAD_INIT();
+    stm_vector vec;
+    vec.initialize(10);
+
+    int size = vec.size(), capacity = vec.capacity();
+    std::cout << "after initialization\n";
+    std::cout << "size: " + std::to_string(size) + "\n";
+    std::cout << "capacity: " + std::to_string(capacity) + "\n";
+
+    void* args[256];
+    pthread_t tid[256];
+
+    // set up configuration structs for the threads we'll create
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
+
+    // actually create the threads
+    for (uint32_t j = 1; j < CFG.threads; j++)
+        pthread_create(&tid[j], &attr, &run_thread, &vec);
+
+    // all of the other threads should be queued up, waiting to run the
+    // benchmark, but they can't until this thread starts the benchmark
+    // too...
+    run_thread(&vec);
+
+    // everyone should be done.  Join all threads so we don't leave anything
+    // hanging around
+    for (uint32_t k = 1; k < CFG.threads; k++)
+        pthread_join(tid[k], NULL);
+
+    size = vec.size(), capacity = vec.capacity();
+    std::cout << "after threads finish\n";
+    std::cout << "size: " + std::to_string(size) + "\n";
+    std::cout << "capacity: " + std::to_string(capacity) + "\n";
+
+    // And call sys shutdown stuff
+    TM_SYS_SHUTDOWN();
+
+    return 0;
+}
+
+// default constructor: creates a vector with capacity 128
+//stm_vector::stm_vector() {
+//	stm_vector(128);
+//}
+
 // creates a vector with an initial capacity of n
-stm_vector::stm_vector(int n) {
+void stm_vector::initialize(int n) {
+	int max_capacity, capacity, size;
 	TM_BEGIN(atomic) {
-		TM_WRITE(_size, 0);
-		TM_WRITE(_capacity, 0);
-		// calculate max capacity of vector based on number of levels allocated
-		TM_WRITE(_max_capacity, pow(2, NUM_LEVELS + 1) - 2);
+		max_capacity = pow(2, NUM_LEVELS + 1) - 2;
+		capacity = 0;
+                size = 0;
+		TM_WRITE(_size, size);
+		TM_WRITE(_capacity, capacity);
+		TM_WRITE(_max_capacity, max_capacity);
 		TM_WRITE(array, (node_t **)TM_ALLOC(NUM_LEVELS * sizeof(node_t *)));
-		stm_vector::reserve(n);
 	}
 	TM_END;
+	stm_vector::reserve(n);
 }
 
 // adds val to the end of the vector; increments size
@@ -36,6 +133,7 @@ void stm_vector::pushback(int val) {
 		TM_WRITE(array[get_bucket(size)][get_idx_within_bucket(size)].val, val);
 		TM_WRITE(_size, size+1);
 	}
+	TM_END;
 }
 
 // removes and returns the last element in the vector; decrements size
@@ -55,8 +153,8 @@ int stm_vector::popback() {
 
 // increases the capacity of the vector to be able to hold n elements
 void stm_vector::reserve(int n) {
-	int max_capacity, capacity, size, i;
-
+	int max_capacity, capacity, size, i, bucketSize;
+	
 	TM_BEGIN(atomic) {
 		// get current values of max capacity, capacity, and size
 		max_capacity = TM_READ(_max_capacity);
@@ -78,7 +176,7 @@ void stm_vector::reserve(int n) {
 		// next loop since we need a level to base the capacity of the rest off of
 		if (capacity <= 0) {
 			capacity = FBS;
-			TM_WRITE(array[0], (node_t *)TM_ALLOC(FBS * sizeof(node_t));
+			TM_WRITE(array[0], (node_t *)TM_ALLOC(FBS * sizeof(node_t)));
 		}
 
 		// the index of the largest in-use bucket
@@ -88,10 +186,10 @@ void stm_vector::reserve(int n) {
 		// add new buckets until we have enough buckets for n elements.
 		while (i < get_bucket(n-1)) {
 			i++;
-			stm_vector::allocate_bucket(i);
+			bucketSize = 1 << (i + stm_vector::highest_bit(FBS));
+			TM_WRITE(array[i], (node_t *)TM_ALLOC(bucketSize * sizeof(node_t)));
 			capacity = (2*capacity) + 2;
 		}
-
 		TM_WRITE(_capacity, capacity);
 	}
 	TM_END;

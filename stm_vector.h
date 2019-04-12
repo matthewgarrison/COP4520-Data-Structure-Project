@@ -15,8 +15,6 @@ class stm_vector {
 		node_t ** array;
 		int _size, _capacity, _max_capacity;
 	public:
-		stm_vector();
-		stm_vector(int n);
 		void pushback(int val);
 		int popback();
 		void reserve(int n);
@@ -24,6 +22,7 @@ class stm_vector {
 		void write(int idx, int val);
 		int size();
 		int capacity();
+		void initialize(int n);
     void allocate_bucket(int bucketIdx);
     int get_bucket(int i);
     int get_idx_within_bucket(int i);
