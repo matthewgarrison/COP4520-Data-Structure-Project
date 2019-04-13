@@ -246,7 +246,7 @@ int stm_vector::read(int idx) {
 	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
 
 	TM_BEGIN(atomic) {
-		// get current size of value
+		// get current value of size
 		size = TM_READ(_size);
 		// check that given index is within bounds
 		if (idx >= size) throw std::out_of_range("read() with index " + std::to_string(idx) + " out of bounds.");
