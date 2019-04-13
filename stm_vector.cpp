@@ -39,10 +39,16 @@ void* run_thread(void* arg) {
 
     stm_vector *vec = reinterpret_cast<stm_vector*>(arg);
     int val;
-    for(int i=0; i<NUM_TRANSACTIONS; i++) {
-      vec->pushback(i);
-      val = vec->popback();
+    for (int i=0; i<5; i++) {
+	    vec->pushback(i);
     }
+    vec->popback();
+    vec->write(2, 12345);
+
+//    for(int i=0; i<NUM_TRANSACTIONS; i++) {
+//      vec->pushback(i);
+//      val = vec->popback();
+//    }
 
     TM_THREAD_SHUTDOWN();
 }
@@ -84,6 +90,23 @@ int main(int argc, char** argv) {
 
     size = vec.size(), capacity = vec.capacity();
     std::cout << "after threads finish\n";
+    std::cout << "size: " + std::to_string(size) + "\n";
+    std::cout << "capacity: " + std::to_string(capacity) + "\n";
+
+    std::cout << "reading all elements...\n";
+    int val;
+    for (int i=0; i<size; i++) {
+	    val = vec.read(i);
+	    std::cout << to_string(val) + " ";
+    }
+    std::cout << std::endl;
+    std::cout << "popping all elements...\n";
+    for (int i=0; i<size; i++) {
+	    val = vec.popback();
+	    std::cout << to_string(val) + " ";
+    }
+    std::cout << std::endl;
+    size = vec.size(), capacity = vec.capacity();
     std::cout << "size: " + std::to_string(size) + "\n";
     std::cout << "capacity: " + std::to_string(capacity) + "\n";
 
