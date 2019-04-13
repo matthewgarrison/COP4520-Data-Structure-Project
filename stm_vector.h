@@ -23,6 +23,7 @@ class stm_vector {
 		int size();
 		int capacity();
 		void initialize(int n);
+		void initialize();
     void allocate_bucket(int bucketIdx);
     int get_bucket(int i);
     int get_idx_within_bucket(int i);

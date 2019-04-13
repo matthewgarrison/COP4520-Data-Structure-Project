@@ -36,17 +36,13 @@ Config CFG TM_ALIGN(64);
 void* run_thread(void* arg) {
     // each thread must be initialized before running transactions
     TM_THREAD_INIT();
+
     stm_vector *vec = reinterpret_cast<stm_vector*>(arg);
-
-    vec->pushback(1);
-
-//    int val;
-//    for(int i=0; i<NUM_TRANSACTIONS; i++) {
-//        std::cout << "Push value: " + std::to_string(i) << std::endl;
-//        vec.pushback(i);
-//        val = vec.popback();
-//      	std::cout << "Pop return value: " + std::to_string(val) << std::endl;
-//    }
+    int val;
+    for(int i=0; i<NUM_TRANSACTIONS; i++) {
+      vec->pushback(i);
+      val = vec->popback();
+    }
 
     TM_THREAD_SHUTDOWN();
 }
@@ -57,7 +53,7 @@ int main(int argc, char** argv) {
     // original thread must be initalized also
     TM_THREAD_INIT();
     stm_vector vec;
-    vec.initialize(10);
+    vec.initialize(0);
 
     int size = vec.size(), capacity = vec.capacity();
     std::cout << "after initialization\n";
@@ -97,10 +93,10 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-// default constructor: creates a vector with capacity 128
-//stm_vector::stm_vector() {
-//	stm_vector(128);
-//}
+// default initialization: creates a vector with capacity 128
+void stm_vector::initialize() {
+	stm_vector::initialize(128);
+}
 
 // creates a vector with an initial capacity of n
 void stm_vector::initialize(int n) {
@@ -108,7 +104,7 @@ void stm_vector::initialize(int n) {
 	TM_BEGIN(atomic) {
 		max_capacity = pow(2, NUM_LEVELS + 1) - 2;
 		capacity = 0;
-                size = 0;
+    size = 0;
 		TM_WRITE(_size, size);
 		TM_WRITE(_capacity, capacity);
 		TM_WRITE(_max_capacity, max_capacity);
@@ -120,18 +116,31 @@ void stm_vector::initialize(int n) {
 
 // adds val to the end of the vector; increments size
 void stm_vector::pushback(int val) {
-	int size, capacity;
+	int size, capacity, reserve_space;
 	TM_BEGIN(atomic) {
 		// read current values of size and capacity
 		size = TM_READ(_size);
 		capacity = TM_READ(_capacity);
-		// increase capacity if inserting this element would put vector size past capacity
-		if (size >= capacity) {
-			stm_vector::reserve(size+1);
+		// if we don't need to increase capacity, write val to end of vector and update size
+		if (size < capacity) {
+			TM_WRITE(array[get_bucket(size)][get_idx_within_bucket(size)].val, val);
+      TM_WRITE(_size, size+1);
+			reserve_space = 0;
 		}
-		// write val to end of vector and update size
+		// otherwise, we'll need to reserve space before completing operation
+		else {
+			reserve_space = 1;
+		}
+	}
+	TM_END;
+
+	if (!reserve_space)
+		return;
+
+	stm_vector::reserve(size+1);
+	TM_BEGIN(atomic) {
 		TM_WRITE(array[get_bucket(size)][get_idx_within_bucket(size)].val, val);
-		TM_WRITE(_size, size+1);
+    TM_WRITE(_size, size+1);
 	}
 	TM_END;
 }
@@ -154,7 +163,7 @@ int stm_vector::popback() {
 // increases the capacity of the vector to be able to hold n elements
 void stm_vector::reserve(int n) {
 	int max_capacity, capacity, size, i, bucketSize;
-	
+
 	TM_BEGIN(atomic) {
 		// get current values of max capacity, capacity, and size
 		max_capacity = TM_READ(_max_capacity);
@@ -168,7 +177,7 @@ void stm_vector::reserve(int n) {
 		}
 
 		// don't do anything if vector can already hold n elements
-		if (n <= capacity) {
+		if (n <= capacity && n > 0) {
 			return;
 		}
 
