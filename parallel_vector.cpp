@@ -32,7 +32,55 @@ comb_vector::comb_vector(int n) {
 }
 
 int comb_vector::popback() {
-	return 0;
+	descr *curr_d = nullptr, *new_d = nullptr;
+	int elem = MARKED;
+	while (true) {
+		curr_d = global_vector->vector_desc.load();
+
+		// Complete any pending operation.
+		comb_vector::complete_write(curr_d->write_op);		
+
+		// If there's a current or ready Combine operation, this thread will
+		// help complete it.
+		if(curr_d->batch != nullptr) {
+			comb_vector::combine(comb_vector::info, curr_d, true);
+		}
+
+		// There's nothing to pop.
+		if (curr_d->size == 0 && comb_vector::global_vector->batch.load() == nullptr) 
+			return MARKED;
+
+		if (curr_d->size == 0) {
+			// The vector is empty, but there's stuff in the combining queue, 
+			// so we keep going.
+			elem = MARKED;
+		} else {
+			elem = read_unsafe(curr_d->size - 1);
+		}
+
+		// Create a new Descriptor.
+		new_d = new descr(curr_d->size - 1, nullptr, op_type::POP);
+		new_d->offset = curr_d->size; // The size of the vector, without this pop.
+		// This signals that the Combine operation should start.
+		new_d->batch = comb_vector::global_vector->batch.load();
+
+		if (global_vector->vector_desc.compare_exchange_strong(curr_d, new_d)) {
+			if (new_d->batch != nullptr && 
+					new_d->batch == comb_vector::global_vector->batch.load()) {
+				// We need to execute any pending pushes before we can pop. Then we'll return 
+				// the last element added to the vector by Combine.
+				new_d->batch->closed = true;
+				elem = comb_vector::combine(comb_vector::info, new_d, false);
+			} else {
+				// Mark the node as logically deleted.
+				comb_vector::marknode(curr_d->size - 1);
+			}
+			break;
+		}
+	}
+
+	comb_vector::info->offset = new_d->size;
+	return elem;
 }
 
 void comb_vector::pushback(int val) {
