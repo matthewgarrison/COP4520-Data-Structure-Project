@@ -36,7 +36,7 @@ int comb_vector::popback() {
 }
 
 void comb_vector::pushback(int val) {
-	bool will_add_to_batch = false, help = false;
+	bool will_add_to_batch = false, help_with_combine = false;
 	descr *curr_d = nullptr, *new_d = nullptr;
 	while(true) {
 		// POSSIBLE MEMORY LEAK WITH CURR_D
@@ -56,32 +56,30 @@ void comb_vector::pushback(int val) {
 		// If the appropriate bucket doesn't exist, create it.
 		if (global_vector->vdata[bucket_idx] == nullptr)
 			comb_vector::allocate_bucket(bucket_idx);
+
 		// Create a new Descriptor and WriteDescriptor.
 		write_descr *writeop =
 			new write_descr(read_unsafe(curr_d->size), val, curr_d->size);
-		// writeOp->pending = true;
-		// writeOp->v_old = ;
-		// writeOp->v_new = val;
-		// writeOp->pos = curr_d->size;
-
 		new_d = new descr(curr_d->size + 1, writeop, op_type::PUSH);
 
 		// If our CAS failed (in a previous loop iteration) or this thread
 		// has already added items to the queue, then we'll try to add this
-		// operation to the queue. (Once we add one operation to the queue,
-		//we'll keep doing so until that queue closes.)
+		// operation to the queue. (Once we add one push to the queue, we'll
+		// keep doing so until that queue closes.)
 		if (will_add_to_batch) {
 			//|| (threadInfo.q != null && threadInfo.q == batch.get())) {
 			if(add_to_batch(new_d)) {
 				return; // The operation was added to the queue
 			}
 
-			// We couldn't add it to the queue.
-			// [[Not sure why we set newDesc.writeOp to null -
-			// we didn't add it to the queue, so where did it go?]]
-			free(new_d);
-			new_d = new descr(curr_d->size, nullptr, NONE);
-			help = true;
+			// We couldn't add it to the queue. Therefore, we'll try to help 
+			// with the Combine that is happening. If the CAS below succeeds, 
+			// we'll do another loop (because help_with_combine is true) and 
+			// add val then. If it fails, we'll do another loop and add writeOp 
+			// to a new combining queue (because will_add_to_batch is true).
+			new_d->size = curr_d->size;
+			new_d->write_op = NULL;
+			help_with_combine = true;
 			//threadInfo.q = null;
 		}
 
@@ -91,8 +89,12 @@ void comb_vector::pushback(int val) {
 				// AddToBatch set the descriptor's queue, which only happens
 				// when we're ready to combine.
 				combine(comb_vector::info, new_d, true);
-				if (help) { // [[We're going to help another thread, I guess?]]
-					help = false;
+				if (help_with_combine) {
+					// We failed the AddToBatch above, so now that we're done 
+					// helping with Combine, we're going to do another loop 
+					// (because we haven't added writeOp to the vector/combining 
+					// queue yet).
+					help_with_combine = false;
 					continue;
 				}
 			}
