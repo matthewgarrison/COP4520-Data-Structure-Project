@@ -6,6 +6,22 @@ int main(int argc, char **argv)
 	return 0;
 }
 
+write_descr::write_descr() {  }
+write_descr::write_descr(int o, int n, int p) {
+	pending = true;
+	v_old = o;
+	v_new = n;
+	pos = p;
+}
+
+descr::descr(int s, write_descr *wd, op_type ot) {
+	size = s;
+	offset = -1;
+	write_op = wd;
+	op = ot;
+	// batch = ???
+}
+
 comb_vector::comb_vector() {
 
 }
@@ -26,7 +42,7 @@ void comb_vector::pushback(int val) {
 		curr_d = global_vector->vector_desc.load();
 
 		// Complete any pending operation.
-		comb_vector::complete_write(curr_d->opdesc);
+		comb_vector::complete_write(curr_d->write_op);
 
 		// If there's a current or ready Combine operation, this thread will 
 		// help complete it.
@@ -41,7 +57,7 @@ void comb_vector::pushback(int val) {
 			comb_vector::allocate_bucket(bucket_idx);
 		// Create a new Descriptor and WriteDescriptor.
 		write_descr *writeop = 
-			new write_descr(read_ref_at(curr_d->size), val, curr_d->size);
+			new write_descr(read_unsafe(curr_d->size), val, curr_d->size);
 		// writeOp->pending = true;
 		// writeOp->v_old = ;
 		// writeOp->v_new = val;
@@ -87,7 +103,7 @@ void comb_vector::pushback(int val) {
 		}
 	}
 
-	complete_write(new_d->opdesc);
+	complete_write(new_d->write_op);
 	//threadInfo.size = newDesc.size;
 }
 
@@ -129,7 +145,7 @@ void comb_vector::marknode(int idx) {
 
 }
 
-void comb_vector::complete_write(write_descr writeop) {
+void comb_vector::complete_write(write_descr *writeop) {
 
 }
 
@@ -137,7 +153,7 @@ void comb_vector::allocate_bucket(int bucketIdx) {
 
 }
 
-int comb_vector::read_ref_at(int idx) {
+int comb_vector::read_unsafe(int idx) { // No bounds checking
 	return 0;
 }
 
@@ -182,11 +198,4 @@ int comb_vector::highest_one_bit(unsigned int i) {
 	i |= (i >>  8);
 	i |= (i >> 16);
 	return i - (i >> 1);
-}
-
-write_descr::write_descr(int o, int n, int p) {
-	pending = true;
-	v_old = o;
-	v_new = n;
-	pos = p;
 }

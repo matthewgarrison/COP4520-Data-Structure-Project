@@ -1,3 +1,6 @@
+#ifndef PARA_VECTOR_H
+#define PARA_VECTOR_H
+
 #include <cstdlib>
 #include <cstdio>
 #include <atomic>
@@ -22,6 +25,7 @@ class write_descr {
 		int v_old;
 		int v_new;
 		write_descr(int o, int n, int p);
+		write_descr();
 };
 
 typedef struct Queue_t {
@@ -33,12 +37,13 @@ typedef struct Queue_t {
 
 class descr {
 	public:
-		write_descr opdesc;
+		write_descr *write_op;
 		size_t size;
 		size_t offset;
 		Queue *batch;
 		op_type op;
-		descr(int s, write_descr *wd, op_type );
+		descr(int s, write_descr *wd, op_type ot);
+		descr();
 };
 
 class vector_vars {
@@ -66,9 +71,9 @@ class comb_vector {
 		int combine(descr *d, bool dont_need_to_return);
 		bool inbounds(int idx);
 		void marknode(int idx);
-		void complete_write(write_descr writeop);
+		void complete_write(write_descr *writeop);
 		void allocate_bucket(int bucketIdx);
-		int read_ref_at(int idx);
+		int read_unsafe(int idx);
 
 		int get_bucket(int i);
 		int get_idx_within_bucket(int i);
@@ -86,3 +91,5 @@ class comb_vector {
 		int get_size();
 		int get_capacity();
 };
+
+#endif
