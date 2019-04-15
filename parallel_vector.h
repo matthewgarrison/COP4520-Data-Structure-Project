@@ -73,7 +73,7 @@ class comb_vector {
 		bool inbounds(int idx);
 		void marknode(int idx);
 		void complete_write(write_descr *writeop);
-		void allocate_bucket(int bucketIdx);
+		void allocate_bucket(int bucket_idx);
 		int read_unsafe(int idx);
 
 		int get_bucket(int i);

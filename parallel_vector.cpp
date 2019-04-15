@@ -151,8 +151,14 @@ void comb_vector::complete_write(write_descr *writeop) {
 
 }
 
-void comb_vector::allocate_bucket(int bucketIdx) {
-
+void comb_vector::allocate_bucket(int bucket_idx) {
+	int bucket_size = 1 << (bucket_idx + comb_vector::highest_bit(FBS));
+	std::vector<std::atomic_int> *new_bucket = new std::vector<std::atomic_int>();
+	std::vector<std::atomic_int> *old_bucket = nullptr;
+	if (!(comb_vector::global_vector -> vdata[bucket_idx]).compare_exchange_strong(old_bucket, new_bucket)) {
+		// Another thread CASed before us, so free this bucket.
+		free(new_bucket);
+	}
 }
 
 int comb_vector::read_unsafe(int idx) { // No bounds checking
