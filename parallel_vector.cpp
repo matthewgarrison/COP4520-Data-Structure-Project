@@ -48,7 +48,7 @@ void comb_vector::pushback(int val) {
 		// If there's a current or ready Combine operation, this thread will
 		// help complete it.
 		if(curr_d->batch != nullptr) {
-			comb_vector::combine(curr_d, true);
+			comb_vector::combine(comb_vector::info, curr_d, true);
 		}
 
 		// Determine which bucket this element will go in.
@@ -90,7 +90,7 @@ void comb_vector::pushback(int val) {
 			if (new_d->batch != nullptr) {
 				// AddToBatch set the descriptor's queue, which only happens
 				// when we're ready to combine.
-				combine(new_d, true);
+				combine(comb_vector::info, new_d, true);
 				if (help) { // [[We're going to help another thread, I guess?]]
 					help = false;
 					continue;
@@ -105,8 +105,7 @@ void comb_vector::pushback(int val) {
 	}
 
 	complete_write(new_d->write_op);
-	comb_vector::info->offset += 1;
-	//threadInfo.size = newDesc.size;
+	comb_vector::info->offset = new_d->size;
 }
 
 void comb_vector::reserve(int n) {
@@ -135,7 +134,7 @@ bool comb_vector::add_to_batch(descr *d){
 	return false;
 }
 
-int comb_vector::combine(descr *d, bool dont_need_to_return) {
+int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	return 0;
 }
 

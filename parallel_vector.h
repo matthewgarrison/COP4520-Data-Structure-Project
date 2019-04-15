@@ -66,10 +66,10 @@ class comb_vector {
 	private:
 		vector_vars *global_vector;
 		int size, capacity, max_capacity;
-		__thread static th_info *info;
+		static __thread th_info *info;
 
 		bool add_to_batch(descr *d);
-		int combine(descr *d, bool dont_need_to_return);
+		int combine(th_info *info, descr *d, bool dont_need_to_return);
 		bool inbounds(int idx);
 		void marknode(int idx);
 		void complete_write(write_descr *writeop);
