@@ -33,7 +33,7 @@ typedef struct Queue_t {
 	void *items[QSize];
 	size_t tail;
 	size_t head;
-} Queue;	
+} Queue;
 
 class descr {
 	public:
@@ -66,6 +66,7 @@ class comb_vector {
 	private:
 		vector_vars *global_vector;
 		int size, capacity, max_capacity;
+		__thread static th_info *info;
 
 		bool add_to_batch(descr *d);
 		int combine(descr *d, bool dont_need_to_return);
