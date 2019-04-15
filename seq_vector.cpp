@@ -33,6 +33,11 @@ int main() {
 
 	std::vector<int> vec2 ;
 	vec2.reserve(200);
+	vec2[50] = 646178;
+	std::cout << "Element 50: " + std::to_string(vec2[50]) << std::endl;
+	std::cout << "Size: " + std::to_string(vec2.size()) << std::endl;
+
+	std::cout << "100 pushes" << std::endl;
 	for (int i=0; i<100; i++) {
 		vec2.push_back(i);
 	}
