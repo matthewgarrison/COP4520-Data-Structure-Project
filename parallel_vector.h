@@ -6,11 +6,13 @@
 #include <atomic>
 #include <vector>
 #include <array>
+#include <climits>
 
 // We'll have to decide on a maximum queue size
 #define QSize 100000
 #define NUM_LEVELS 30
 #define FBS 2
+#define MARKED INT_MIN
 
 enum op_type {
 	PUSH,
@@ -75,6 +77,7 @@ class comb_vector {
 		void complete_write(write_descr *writeop);
 		void allocate_bucket(int bucket_idx);
 		int read_unsafe(int idx);
+		int check_bounds(int idx);
 
 		int get_bucket(int i);
 		int get_idx_within_bucket(int i);
@@ -88,7 +91,7 @@ class comb_vector {
 		int popback();
 		void reserve(int n);
 		int read(int idx);
-		void write(int idx, int val);
+		bool write(int idx, int val);
 		int get_size();
 		int get_capacity();
 };

@@ -114,12 +114,45 @@ void comb_vector::reserve(int n) {
 
 }
 
+// if the given index is valid, returns the data at that index
+// otherwise, returns MARKED
 int comb_vector::read(int idx) {
-	return 0;
+	return check_bounds(idx);
 }
 
-void comb_vector::write(int idx, int val) {
+// if the given index is valid, attempts to CAS given value with value at given index
+// if given index is invalid or CAS fails, returns false; otherwise, returns true
+bool comb_vector::write(int idx, int val) {
+	int data = check_bounds(idx);
 
+	if (data == MARKED)
+		return false;
+
+	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
+	return true;
+}
+
+// if the given index is valid, returns the data at that index
+// otherwise, returns MARKED
+int comb_vector::check_bounds(int idx) {
+	// read thread-local size
+	int size = comb_vector::info->offset;
+
+	// if index is out of bounds when compared to thread-local version of size,
+	// check global version of size
+	if (idx >= size) {
+		size = comb_vector::get_size();
+		// now, check again; if index is still out of bounds, it's actually out of bounds
+		if (idx >= size) return MARKED;
+	}
+
+	// get and return data at the given index
+	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
+	// read atomically ---
+	int data = 0;
+	// int data = ((global_vector->vdata[i]).load())[j].load();
+
+	return data;
 }
 
 int comb_vector::get_size() {
