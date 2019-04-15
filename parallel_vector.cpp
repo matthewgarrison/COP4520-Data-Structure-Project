@@ -66,8 +66,8 @@ void comb_vector::pushback(int val) {
 		// has already added items to the queue, then we'll try to add this
 		// operation to the queue. (Once we add one push to the queue, we'll
 		// keep doing so until that queue closes.)
-		if (will_add_to_batch) {
-			//|| (threadInfo.q != null && threadInfo.q == batch.get())) {
+		if (will_add_to_batch || (comb_vector::info->q != nullptr && 
+				comb_vector::info->q == comb_vector::global_vector->batch.load())) {
 			if(add_to_batch(new_d)) {
 				return; // The operation was added to the queue
 			}
@@ -80,7 +80,7 @@ void comb_vector::pushback(int val) {
 			new_d->size = curr_d->size;
 			new_d->write_op = NULL;
 			help_with_combine = true;
-			//threadInfo.q = null;
+			comb_vector::info->q = nullptr;
 		}
 
 		// Try the normal compare and set.
