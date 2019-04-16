@@ -30,12 +30,15 @@ class write_descr {
 		write_descr();
 };
 
-typedef struct Queue_t {
-	bool closed;
-	void *items[QSize];
-	size_t tail;
-	size_t head;
-} Queue;
+class Queue {
+	public:
+		bool closed;
+		std::array<std::atomic<write_descr *>, QSize> items;
+		std::atomic<size_t> tail;
+		std::atomic<size_t> head;
+		Queue();
+		Queue(write_descr* first_item);
+};
 
 class descr {
 	public:
@@ -84,6 +87,8 @@ class comb_vector {
 		int number_of_trailing_zeros(unsigned int i);
 		int highest_one_bit(unsigned int i);
 	public:
+		static write_descr *EMPTY_SLOT, *FINISHED_SLOT;
+
 		comb_vector();
 		comb_vector(int n);
 		void pushback(int val);

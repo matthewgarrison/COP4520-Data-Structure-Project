@@ -23,6 +23,17 @@ descr::descr(int s, write_descr *wd, op_type ot) {
 	// batch = ???
 }
 
+Queue::Queue(write_descr *first_item) {
+	tail = 1;
+	head = 0;
+	closed = false;
+
+	items[0].store(first_item);
+	for (int i = 1; i < QSize; i++) {
+		// items[i].store(comb_vector::EMPTY_SLOT);
+	}
+}
+
 comb_vector::comb_vector() {
 
 }
@@ -206,8 +217,44 @@ int comb_vector::get_capacity() {
 
 /////////////////////////////////
 
-bool comb_vector::add_to_batch(descr *d){
-	return false;
+bool comb_vector::add_to_batch(descr *d) {
+	Queue *queue = comb_vector::global_vector->batch.load();
+
+	// Check if the vector has a combining queue already. If not, we'll make one.
+	if (queue == nullptr) {
+		Queue *newQ = new Queue(d->write_op);
+		Queue *tmp = nullptr;
+		if (comb_vector::global_vector->batch.compare_exchange_strong(tmp, newQ)) {
+			comb_vector::info->q = newQ;
+			return true;
+		} else {
+			free(newQ);
+		}
+	}
+
+	queue = comb_vector::global_vector->batch.load(); // In case a different thread CASed before us.
+	if (queue == nullptr || queue->closed) {
+		// We don't add descr, because the queue is closed or non-existent.
+		d->batch = queue;
+		return false;
+	}
+
+	int ticket = queue->tail.fetch_add(1); // Where we'll insert into the queue.
+	if (ticket >= QSize) {
+		// The queue is full, so close it and return a failure.
+		queue->closed = true;
+		d->batch = queue;
+		return false;
+	}
+
+	write_descr *tmp = nullptr; // comb_vector::EMPTY_SLOT
+	if (!queue->items[ticket].compare_exchange_strong(tmp, d->write_op)) { // Add it to the queue.
+		return false; // We failed because of an interfering Combine operation.
+	}
+
+	// We successfully added the operation to the queue. Update our thread-local queue's value.
+	comb_vector::info->q = queue;
+	return true;
 }
 
 int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
