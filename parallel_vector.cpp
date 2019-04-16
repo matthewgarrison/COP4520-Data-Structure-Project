@@ -192,16 +192,15 @@ int comb_vector::read(int idx) {
 	return (*((global_vector->vdata[i]).load()))[j].load();
 }
 
+// attempts to write the given value at the node with the given index
 bool comb_vector::write(int idx, int val) {
 	// call write helper with flag of 0 to tell it to only attempt CAS once
 	return write_helper(idx, val, 0);
 }
 
-// if the given index is valid, attempts to CAS given value at node with given index.
 // returns true if the given value is successfully written at the node with the given index,
-// returns false otherwise (either due to being given invalid index or due to failed CAS).
-// be_persistent tells us whether we should keep attempting CAS until it suceeds or if we
-// can just stop after 1 CAS and return its result
+// returns false otherwise. be_persistent tells us whether we should keep attempting CAS
+// until it suceeds or if we can just stop after 1 CAS and return its result
 bool comb_vector::write_helper(int idx, int val, int be_persistent) {
 	int data = read(idx);
 
@@ -226,8 +225,16 @@ bool comb_vector::write_helper(int idx, int val, int be_persistent) {
 	return true;
 }
 
+// returns the current size and, helps complete active Combine operation (if there is one)
 int comb_vector::get_size() {
-	return 0;
+	// If there's a current or ready Combine operation, this thread will help complete it.
+	descr *curr_d = global_vector->vector_desc.load();
+	if(curr_d->batch != nullptr) {
+		comb_vector::combine(comb_vector::info, curr_d, true);
+	}
+
+	// get and return size from global vector's descriptor
+	return comb_vector::global_vector->vector_desc.load()->size;;
 }
 
 int comb_vector::get_capacity() {
