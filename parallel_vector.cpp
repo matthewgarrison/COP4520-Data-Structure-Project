@@ -302,8 +302,13 @@ void comb_vector::marknode(int idx) {
 	write_helper(idx, MARKED, 1);
 }
 
+// attempts to complete pushback operation using CAS
 void comb_vector::complete_write(write_descr *writeop) {
-
+	// if the given write op is still pending, try to complete it
+	if (writeop != nullptr && writeop->pending) {
+		int i = get_bucket(writeop->pos), j = get_idx_within_bucket(writeop->pos);
+		(*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(writeop->v_old, writeop->v_new);
+	}
 }
 
 void comb_vector::allocate_bucket(int bucket_idx) {
