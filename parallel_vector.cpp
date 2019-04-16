@@ -192,19 +192,38 @@ int comb_vector::read(int idx) {
 	return (*((global_vector->vdata[i]).load()))[j].load();
 }
 
-// if the given index is valid, attempts to CAS given value at node with given index;
-// returns true if the given value is successfully written at the node with the given index,
-// returns false otherwise (either due to being given invalid index or due to failed CAS)
 bool comb_vector::write(int idx, int val) {
+	// call write helper with flag of 0 to tell it to only attempt CAS once
+	return write_helper(idx, val, 0);
+}
+
+// if the given index is valid, attempts to CAS given value at node with given index.
+// returns true if the given value is successfully written at the node with the given index,
+// returns false otherwise (either due to being given invalid index or due to failed CAS).
+// be_persistent tells us whether we should keep attempting CAS until it suceeds or if we
+// can just stop after 1 CAS and return its result
+bool comb_vector::write_helper(int idx, int val, int be_persistent) {
 	int data = read(idx);
 
 	// if read() returned MARKED, that means idx is invalid
 	if (data == MARKED)
 		return false;
 
-	// attempt to CAS and return whether it succeeds or fails
+	// attempt to CAS
 	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
-	return (*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(data, val);
+	bool succ = (*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(data, val);
+
+	// if CAS succeeds or we're quitters, return here
+	if (succ || !be_persistent) {
+		return succ;
+	}
+
+	// otherwise, keep trying until we succeed
+	do {
+		data = (*((global_vector->vdata[i]).load()))[j].load();
+	} while (!((*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(data, val)));
+
+	return true;
 }
 
 int comb_vector::get_size() {
@@ -261,12 +280,10 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	return 0;
 }
 
-bool comb_vector::inbounds(int idx) {
-	return false;
-}
-
+// marks the node at the given index
 void comb_vector::marknode(int idx) {
-
+	// call write helper with flag of 1 to tell it to keep attempting CAS until it succeeds
+	write_helper(idx, MARKED, 1);
 }
 
 void comb_vector::complete_write(write_descr *writeop) {

@@ -75,11 +75,11 @@ class comb_vector {
 
 		bool add_to_batch(descr *d);
 		int combine(th_info *info, descr *d, bool dont_need_to_return);
-		bool inbounds(int idx);
 		void marknode(int idx);
 		void complete_write(write_descr *writeop);
 		void allocate_bucket(int bucket_idx);
 		int read_unsafe(int idx);
+		bool write_helper(int idx, int val, int be_persistent);
 
 		int get_bucket(int i);
 		int get_idx_within_bucket(int i);
