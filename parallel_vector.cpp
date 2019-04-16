@@ -38,7 +38,7 @@ int comb_vector::popback() {
 		curr_d = global_vector->vector_desc.load();
 
 		// Complete any pending operation.
-		comb_vector::complete_write(curr_d->write_op);		
+		comb_vector::complete_write(curr_d->write_op);
 
 		// If there's a current or ready Combine operation, this thread will
 		// help complete it.
@@ -47,11 +47,11 @@ int comb_vector::popback() {
 		}
 
 		// There's nothing to pop.
-		if (curr_d->size == 0 && comb_vector::global_vector->batch.load() == nullptr) 
+		if (curr_d->size == 0 && comb_vector::global_vector->batch.load() == nullptr)
 			return MARKED;
 
 		if (curr_d->size == 0) {
-			// The vector is empty, but there's stuff in the combining queue, 
+			// The vector is empty, but there's stuff in the combining queue,
 			// so we keep going.
 			elem = MARKED;
 		} else {
@@ -65,9 +65,9 @@ int comb_vector::popback() {
 		new_d->batch = comb_vector::global_vector->batch.load();
 
 		if (global_vector->vector_desc.compare_exchange_strong(curr_d, new_d)) {
-			if (new_d->batch != nullptr && 
+			if (new_d->batch != nullptr &&
 					new_d->batch == comb_vector::global_vector->batch.load()) {
-				// We need to execute any pending pushes before we can pop. Then we'll return 
+				// We need to execute any pending pushes before we can pop. Then we'll return
 				// the last element added to the vector by Combine.
 				new_d->batch->closed = true;
 				elem = comb_vector::combine(comb_vector::info, new_d, false);
@@ -114,16 +114,16 @@ void comb_vector::pushback(int val) {
 		// has already added items to the queue, then we'll try to add this
 		// operation to the queue. (Once we add one push to the queue, we'll
 		// keep doing so until that queue closes.)
-		if (will_add_to_batch || (comb_vector::info->q != nullptr && 
+		if (will_add_to_batch || (comb_vector::info->q != nullptr &&
 				comb_vector::info->q == comb_vector::global_vector->batch.load())) {
 			if(add_to_batch(new_d)) {
 				return; // The operation was added to the queue
 			}
 
-			// We couldn't add it to the queue. Therefore, we'll try to help 
-			// with the Combine that is happening. If the CAS below succeeds, 
-			// we'll do another loop (because help_with_combine is true) and 
-			// add val then. If it fails, we'll do another loop and add writeOp 
+			// We couldn't add it to the queue. Therefore, we'll try to help
+			// with the Combine that is happening. If the CAS below succeeds,
+			// we'll do another loop (because help_with_combine is true) and
+			// add val then. If it fails, we'll do another loop and add writeOp
 			// to a new combining queue (because will_add_to_batch is true).
 			new_d->size = curr_d->size;
 			new_d->write_op = NULL;
@@ -138,9 +138,9 @@ void comb_vector::pushback(int val) {
 				// when we're ready to combine.
 				combine(comb_vector::info, new_d, true);
 				if (help_with_combine) {
-					// We failed the AddToBatch above, so now that we're done 
-					// helping with Combine, we're going to do another loop 
-					// (because we haven't added writeOp to the vector/combining 
+					// We failed the AddToBatch above, so now that we're done
+					// helping with Combine, we're going to do another loop
+					// (because we haven't added writeOp to the vector/combining
 					// queue yet).
 					help_with_combine = false;
 					continue;
@@ -165,42 +165,35 @@ void comb_vector::reserve(int n) {
 // if the given index is valid, returns the data at that index
 // otherwise, returns MARKED
 int comb_vector::read(int idx) {
-	return check_bounds(idx);
-}
-
-// if the given index is valid, attempts to CAS given value with value at given index
-// if given index is invalid or CAS fails, returns false; otherwise, returns true
-bool comb_vector::write(int idx, int val) {
-	int data = check_bounds(idx);
-
-	if (data == MARKED)
-		return false;
-
-	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
-	return true;
-}
-
-// if the given index is valid, returns the data at that index
-// otherwise, returns MARKED
-int comb_vector::check_bounds(int idx) {
 	// read thread-local size
 	int size = comb_vector::info->offset;
 
 	// if index is out of bounds when compared to thread-local version of size,
 	// check global version of size
 	if (idx >= size) {
-		size = comb_vector::get_size();
+		size = comb_vector::global_vector->vector_desc.load()->size;
 		// now, check again; if index is still out of bounds, it's actually out of bounds
 		if (idx >= size) return MARKED;
 	}
 
 	// get and return data at the given index
 	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
-	// read atomically ---
-	int data = 0;
-	// int data = ((global_vector->vdata[i]).load())[j].load();
+	return (*((global_vector->vdata[i]).load()))[j].load();
+}
 
-	return data;
+// if the given index is valid, attempts to CAS given value at node with given index;
+// returns true if the given value is successfully written at the node with the given index,
+// returns false otherwise (either due to being given invalid index or due to failed CAS)
+bool comb_vector::write(int idx, int val) {
+	int data = read(idx);
+
+	// if read() returned MARKED, that means idx is invalid
+	if (data == MARKED)
+		return false;
+
+	// attempt to CAS and return whether it succeeds or fails
+	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
+	return (*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(data, val);
 }
 
 int comb_vector::get_size() {
@@ -243,8 +236,11 @@ void comb_vector::allocate_bucket(int bucket_idx) {
 	}
 }
 
-int comb_vector::read_unsafe(int idx) { // No bounds checking
-	return 0;
+// reads value at given with no bounds checking, pls don't give bad indices
+int comb_vector::read_unsafe(int idx) {
+	// get and return data at the given index
+	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
+	return (*((global_vector->vdata[i]).load()))[j].load();
 }
 
 /////////////////////////////////
