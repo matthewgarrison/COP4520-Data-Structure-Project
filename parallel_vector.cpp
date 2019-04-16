@@ -1,5 +1,9 @@
 #include "parallel_vector.h"
+
+// define static variables
 th_info __thread *comb_vector::info;
+write_descr *comb_vector::EMPTY_SLOT;
+write_descr *comb_vector::FINISHED_SLOT;
 
 int main(int argc, char **argv)
 {
@@ -30,7 +34,7 @@ Queue::Queue(write_descr *first_item) {
 
 	items[0].store(first_item);
 	for (int i = 1; i < QSize; i++) {
-		// items[i].store(comb_vector::EMPTY_SLOT);
+		items[i].store(comb_vector::EMPTY_SLOT);
 	}
 }
 
@@ -282,7 +286,7 @@ bool comb_vector::add_to_batch(descr *d) {
 		return false;
 	}
 
-	write_descr *tmp = nullptr; // comb_vector::EMPTY_SLOT
+	write_descr *tmp = comb_vector::EMPTY_SLOT;
 	if (!queue->items[ticket].compare_exchange_strong(tmp, d->write_op)) { // Add it to the queue.
 		return false; // We failed because of an interfering Combine operation.
 	}
