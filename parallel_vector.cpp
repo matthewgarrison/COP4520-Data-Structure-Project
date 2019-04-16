@@ -169,8 +169,17 @@ void comb_vector::pushback(int val) {
 	comb_vector::info->offset = new_d->size;
 }
 
+// reserves space in the vector for n elements
 void comb_vector::reserve(int n) {
+	// the index of the largest in-use bucket.
+	int i = get_bucket(comb_vector::global_vector->vector_desc.load()->size - 1);
+	if (i < 0) i = 0;
 
+	// add new buckets until we have enough buckets for n elements.
+	while (i < get_bucket(n - 1)) {
+		i++;
+		allocate_bucket(i);
+	}
 }
 
 // if the given index is valid, returns the data at that index
@@ -234,7 +243,7 @@ int comb_vector::get_size() {
 	}
 
 	// get and return size from global vector's descriptor
-	return comb_vector::global_vector->vector_desc.load()->size;;
+	return comb_vector::global_vector->vector_desc.load()->size;
 }
 
 int comb_vector::get_capacity() {
