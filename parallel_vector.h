@@ -34,7 +34,7 @@ class Queue {
 	public:
 		bool closed;
 		std::array<std::atomic<write_descr *>, QSize> items;
-		std::atomic<size_t> tail;
+		std::atomic<int> tail;
 		std::atomic<uint64_t> head; // hindex is first 32 bits, hcount is second 32 bits
 		Queue();
 		Queue(write_descr* first_item);

@@ -121,8 +121,7 @@ void comb_vector::pushback(int val) {
 			comb_vector::allocate_bucket(bucket_idx);
 
 		// Create a new Descriptor and WriteDescriptor.
-		write_descr *writeop =
-			new write_descr(read_unsafe(curr_d->size), val, curr_d->size);
+		write_descr *writeop = new write_descr(read_unsafe(curr_d->size), val, curr_d->size);
 		new_d = new descr(curr_d->size + 1, writeop, op_type::PUSH);
 
 		// If our CAS failed (in a previous loop iteration) or this thread
@@ -262,8 +261,7 @@ bool comb_vector::add_to_batch(descr *d) {
 	// Check if the vector has a combining queue already. If not, we'll make one.
 	if (queue == nullptr) {
 		Queue *newQ = new Queue(d->write_op);
-		Queue *tmp = nullptr;
-		if (comb_vector::global_vector->batch.compare_exchange_strong(tmp, newQ)) {
+		if (comb_vector::global_vector->batch.compare_exchange_strong(queue, newQ)) {
 			comb_vector::info->q = newQ;
 			return true;
 		} else {
@@ -286,8 +284,7 @@ bool comb_vector::add_to_batch(descr *d) {
 		return false;
 	}
 
-	write_descr *tmp = comb_vector::EMPTY_SLOT;
-	if (!queue->items[ticket].compare_exchange_strong(tmp, d->write_op)) { // Add it to the queue.
+	if (!queue->items[ticket].compare_exchange_strong(comb_vector::EMPTY_SLOT, d->write_op)) { // Add it to the queue.
 		return false; // We failed because of an interfering Combine operation.
 	}
 
@@ -297,7 +294,95 @@ bool comb_vector::add_to_batch(descr *d) {
 }
 
 int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
-	return 0;
+	Queue *queue = comb_vector::global_vector->batch.load();
+	uint64_t head, new_head;
+	int hindex, hcount, old_value, bucket, addr;
+	write_descr *writeop;
+	descr *curr_d;
+
+	// first, make sure that the combining queue has been closed
+	if (queue == nullptr || !queue->closed)
+		return MARKED;
+
+	while (true) {
+		// unpack hindex and hcount from head
+		head = queue->head.load();
+		hindex = (int)comb_vector::get_first_32_bits(head);
+		hcount = (int)comb_vector::get_second_32_bits(head);
+
+		// get current vector descriptor
+		curr_d = global_vector->vector_desc.load();
+
+		// get bucket that -------- and make sure there's enough room to fit them;
+		// if there's not, allocate enough buckets for them
+		bucket = get_bucket(curr_d->offset + hcount);
+		if (comb_vector::global_vector->vdata[bucket].load() == nullptr)
+			allocate_bucket(bucket);
+
+		addr = curr_d->offset + hcount;
+		old_value = read_unsafe(addr);
+
+		// if we've reached the end of the combining queue, we're done with this loop
+		if (hindex == queue->tail.load() || hindex == QSize)
+			break;
+
+		// attempt to write that the write descriptor we're currently looking at has been completed
+		if (queue->items[hindex].compare_exchange_strong(comb_vector::EMPTY_SLOT, comb_vector::FINISHED_SLOT)) {
+			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount);
+			queue->head.compare_exchange_strong(head, new_head);
+			continue;
+		}
+
+		if (queue->items[hindex].load() == comb_vector::FINISHED_SLOT) {
+			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount);
+			queue->head.compare_exchange_strong(head, new_head);
+			continue;
+		}
+
+
+		writeop = queue->items[hindex].load();
+		if (!(writeop->pending)) {
+			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount+1);
+			queue->head.compare_exchange_strong(head, new_head);
+			continue;
+		}
+
+		if (writeop->pending && queue->head.load() == head)
+			queue->tail.compare_exchange_strong(old_value, writeop->v_new);
+
+		new_head = comb_vector::combine_into_64_bits(hindex+1, hcount+1);
+		queue->head.compare_exchange_strong(head, new_head);
+		writeop->pending = false;
+	}
+
+	// get new size of vector,which is the current size of the vector plus however
+	// many combine operations have been successfully completed
+	int new_size = curr_d->offset + hcount;
+
+	// if current descriptor has a write op of popback, subtract one from size
+	// to complete the popback
+	if (curr_d->op == op_type::POP)
+		new_size--;
+
+	// create new descriptor with the new size and no write op since popback write
+	// op was already taken care of above (if there was one)
+	descr *new_d = new descr(new_size, nullptr, op_type::NONE);
+
+	// attempt to swap old descriptor with the new descriptor
+	comb_vector::global_vector->vector_desc.compare_exchange_strong(curr_d, new_d);
+
+	// if we need to return the last value in the vector (in the case of being called
+	// by popback), get the last value and mark the node that holds it
+	if (!dont_need_to_return) {
+		// may need to replace with curr_d or new_d -----------
+		int index = curr_d->offset + hcount;
+		int elem = comb_vector::read_unsafe(index);
+		comb_vector::marknode(index);
+		return elem;
+	}
+
+	// if we don't need to return anything, just return whatever
+	return MARKED;
 }
 
 // marks the node at the given index
