@@ -335,6 +335,21 @@ int comb_vector::read_unsafe(int idx) {
 
 /////////////////////////////////
 
+// returns first 32 bits of a 64-bit unsigned integer
+uint32_t comb_vector::get_first_32_bits(uint64_t n) {
+	return (uint32_t)(n >> 32);
+}
+
+// returns second 32 bits of a 64-bit unsigned integer
+uint32_t comb_vector::get_second_32_bits(uint64_t n) {
+	return (uint32_t)(n);
+}
+
+// returns the concatenation (as a 64-bit unsigned integer) of two unsigned 32-bit integers
+uint64_t comb_vector::combine_into_64_bits(uint32_t a, uint32_t b) {
+	return ((uint64_t)a << 32) | b;
+}
+
 // returns the index of the bucket for i (level zero of the array).
 int comb_vector::get_bucket(int i) {
 	int pos = i + FBS;

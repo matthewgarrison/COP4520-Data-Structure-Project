@@ -35,7 +35,7 @@ class Queue {
 		bool closed;
 		std::array<std::atomic<write_descr *>, QSize> items;
 		std::atomic<size_t> tail;
-		std::atomic<size_t> head;
+		std::atomic<uint64_t> head; // hindex is first 32 bits, hcount is second 32 bits
 		Queue();
 		Queue(write_descr* first_item);
 };
@@ -86,6 +86,9 @@ class comb_vector {
 		int highest_bit(int n);
 		int number_of_trailing_zeros(unsigned int i);
 		int highest_one_bit(unsigned int i);
+		uint32_t get_first_32_bits(uint64_t n);
+		uint32_t get_second_32_bits(uint64_t n);
+		uint64_t combine_into_64_bits(uint32_t a, uint32_t b);
 	public:
 		static write_descr *EMPTY_SLOT, *FINISHED_SLOT;
 
