@@ -207,18 +207,24 @@ int comb_vector::read(int idx) {
 // attempts to write the given value at the node with the given index
 bool comb_vector::write(int idx, int val) {
 	// call write helper with flag of 0 to tell it to only attempt CAS once
-	return write_helper(idx, val, 0);
+	// and flag of 1 to tell it to check bounds
+	return write_helper(idx, val, 0, 1);
 }
 
 // returns true if the given value is successfully written at the node with the given index,
 // returns false otherwise. be_persistent tells us whether we should keep attempting CAS
 // until it suceeds or if we can just stop after 1 CAS and return its result
-bool comb_vector::write_helper(int idx, int val, int be_persistent) {
-	int data = read(idx);
+bool comb_vector::write_helper(int idx, int val, int be_persistent, int check_bounds) {
+	int data;
 
-	// if read() returned MARKED, that means idx is invalid
-	if (data == MARKED)
-		return false;
+	// if we were told to check bounds, make sure given index is valid before proceeding
+	if (check_bounds) {
+		data = read(idx);
+
+		// if read() returned MARKED, that means idx is invalid
+		if (data == MARKED)
+			return false;
+	}
 
 	// attempt to CAS
 	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
@@ -333,22 +339,25 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 			continue;
 		}
 
-		if (queue->items[hindex].load() == comb_vector::FINISHED_SLOT) {
+		// load last write descriptor in the combining queue
+		writeop = queue->items[hindex].load();
+
+		if (writeop == comb_vector::FINISHED_SLOT) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount);
 			queue->head.compare_exchange_strong(head, new_head);
 			continue;
 		}
 
-
-		writeop = queue->items[hindex].load();
 		if (!(writeop->pending)) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount+1);
 			queue->head.compare_exchange_strong(head, new_head);
 			continue;
 		}
 
+		// if writeop is pending, CAS old value with new value (first flag of 0 tells write_helper
+		// to only try CAS once and second flag of 0 tells it to not check bounds)
 		if (writeop->pending && queue->head.load() == head)
-			queue->tail.compare_exchange_strong(old_value, writeop->v_new);
+			write_helper(old_value, writeop->v_new, 0, 0);
 
 		new_head = comb_vector::combine_into_64_bits(hindex+1, hcount+1);
 		queue->head.compare_exchange_strong(head, new_head);
@@ -387,8 +396,9 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 
 // marks the node at the given index
 void comb_vector::marknode(int idx) {
-	// call write helper with flag of 1 to tell it to keep attempting CAS until it succeeds
-	write_helper(idx, MARKED, 1);
+	// call write helper with flag of 1 to tell it to keep attempting CAS
+	// until it succeeds and flag of 0 to tell it to not check bounds
+	write_helper(idx, MARKED, 1, 0);
 }
 
 // attempts to complete pushback operation using CAS

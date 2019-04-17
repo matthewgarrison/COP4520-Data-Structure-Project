@@ -79,7 +79,7 @@ class comb_vector {
 		void complete_write(write_descr *writeop);
 		void allocate_bucket(int bucket_idx);
 		int read_unsafe(int idx);
-		bool write_helper(int idx, int val, int be_persistent);
+		bool write_helper(int idx, int val, int be_persistent, int check_bounds);
 
 		int get_bucket(int i);
 		int get_idx_within_bucket(int i);
