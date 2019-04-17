@@ -195,13 +195,22 @@ int comb_vector::read(int idx) {
 	// check global version of size
 	if (idx >= size) {
 		size = comb_vector::global_vector->vector_desc.load()->size;
+		// update thread-local size to the actual value of size
+		comb_vector::info->offset = size;
 		// now, check again; if index is still out of bounds, it's actually out of bounds
 		if (idx >= size) return MARKED;
 	}
 
 	// get and return data at the given index
 	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
-	return (*((global_vector->vdata[i]).load()))[j].load();
+	int data = (*((global_vector->vdata[i]).load()))[j].load();
+
+	// if data at idx is marked, that means idx is larger than the actual size of the vector.
+	// so, we should update thread-local size to idx since vector's actual size can be at most idx
+	if (data == MARKED)
+		comb_vector::info->offset = idx;
+
+	return data;
 }
 
 // attempts to write the given value at the node with the given index
