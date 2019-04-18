@@ -59,11 +59,13 @@ class vector_vars {
 		vector_vars();
 };
 
-typedef struct th_info_t {
-	Queue *q;
-	size_t offset;
-	Queue *batch;
-} th_info;
+class th_info {
+	public:
+		Queue *q;
+		size_t offset;
+		Queue *batch;
+		th_info();
+};
 
 class comb_vector {
 	private:

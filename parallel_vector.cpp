@@ -62,6 +62,12 @@ Queue::Queue(write_descr *first_item) {
 	}
 }
 
+th_info::th_info() {
+	q = nullptr;
+	offset = 0;
+	batch = nullptr;
+}
+
 vector_vars::vector_vars() {
 	batch = nullptr;
 	vector_desc = new descr();
@@ -73,6 +79,7 @@ comb_vector::comb_vector() {
 
 comb_vector::comb_vector(int n) {
 	global_vector = new vector_vars();
+	info = new th_info();
 	allocate_bucket(0);
 	reserve(n);
 }
