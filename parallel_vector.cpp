@@ -1,4 +1,5 @@
 #include "parallel_vector.h"
+#include <iostream>
 
 // define static variables
 th_info __thread *comb_vector::info;
@@ -7,11 +8,25 @@ write_descr *comb_vector::FINISHED_SLOT;
 
 int main(int argc, char **argv)
 {
-	printf("hello world\n");
+	std::cout << "creating new vector...\n" << std::endl;
+	comb_vector *vec = new comb_vector(10);
+
+	for (int i=0; i<20; i++) {
+		std::cout << "pushing " + std::to_string(i) + "..." << std::endl;
+		fflush(stdout);
+		vec->pushback(i);
+	}
+
+	std::cout << "\ncontents of vector" << std::endl;
+	int val;
+	for (int i=0; i<20; i++) {
+		val = vec->read(i);
+		std::cout << val << std::endl;
+	}
+
 	return 0;
 }
 
-write_descr::write_descr() {  }
 write_descr::write_descr(int o, int n, int p) {
 	pending = true;
 	v_old = o;
@@ -24,7 +39,7 @@ descr::descr(int s, write_descr *wd, op_type ot) {
 	offset = -1;
 	write_op = wd;
 	op = ot;
-	// batch = ???
+	batch = nullptr;
 }
 
 Queue::Queue(write_descr *first_item) {
@@ -38,12 +53,19 @@ Queue::Queue(write_descr *first_item) {
 	}
 }
 
-comb_vector::comb_vector() {
+vector_vars::vector_vars() {
+	vector_desc.store(new descr(0, nullptr, op_type::NONE));
+	batch.store(nullptr);
+}
 
+comb_vector::comb_vector() {
+	comb_vector(128);
 }
 
 comb_vector::comb_vector(int n) {
-
+	global_vector = new vector_vars();
+	allocate_bucket(FBS);
+	reserve(n);
 }
 
 int comb_vector::popback() {

@@ -59,9 +59,7 @@ class vector_vars {
 		vector_vars();
 };
 
-// Still not entirely sure how thread locals work, so change this if needed
 typedef struct th_info_t {
-	//vector_vars root;
 	Queue *q;
 	size_t offset;
 	Queue *batch;
@@ -70,7 +68,6 @@ typedef struct th_info_t {
 class comb_vector {
 	private:
 		vector_vars *global_vector;
-		int size, capacity, max_capacity;
 		static __thread th_info *info;
 
 		bool add_to_batch(descr *d);
