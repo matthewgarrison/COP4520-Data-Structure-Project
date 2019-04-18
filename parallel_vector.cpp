@@ -188,6 +188,9 @@ void comb_vector::reserve(int n) {
 // if the given index is valid, returns the data at that index
 // otherwise, returns MARKED
 int comb_vector::read(int idx) {
+	if (idx < 0)
+		return MARKED;
+
 	// read thread-local size
 	int size = comb_vector::info->offset;
 
@@ -207,7 +210,7 @@ int comb_vector::read(int idx) {
 
 	// if data at idx is marked, that means idx is larger than the actual size of the vector.
 	// so, we should update thread-local size to idx since vector's actual size can be at most idx
-	if (data == MARKED)
+	if (data == MARKED && idx < comb_vector::info->offset)
 		comb_vector::info->offset = idx;
 
 	return data;
@@ -224,7 +227,9 @@ bool comb_vector::write(int idx, int val) {
 // returns false otherwise. be_persistent tells us whether we should keep attempting CAS
 // until it suceeds or if we can just stop after 1 CAS and return its result
 bool comb_vector::write_helper(int idx, int val, int be_persistent, int check_bounds) {
-	int data;
+	int data, i, j;
+
+	i = get_bucket(idx), j = get_idx_within_bucket(idx);
 
 	// if we were told to check bounds, make sure given index is valid before proceeding
 	if (check_bounds) {
@@ -234,9 +239,15 @@ bool comb_vector::write_helper(int idx, int val, int be_persistent, int check_bo
 		if (data == MARKED)
 			return false;
 	}
+	else {
+		data = (*((global_vector->vdata[i]).load()))[j].load();
+		// if data at idx is marked, that means idx is larger than the actual size of the vector.
+		// so, we should update thread-local size to idx since vector's actual size can be at most idx
+		if (data == MARKED && idx < comb_vector::info->offset)
+			comb_vector::info->offset = idx;
+	}
 
 	// attempt to CAS
-	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
 	bool succ = (*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(data, val);
 
 	// if CAS succeeds or we're quitters, return here
@@ -247,6 +258,10 @@ bool comb_vector::write_helper(int idx, int val, int be_persistent, int check_bo
 	// otherwise, keep trying until we succeed
 	do {
 		data = (*((global_vector->vdata[i]).load()))[j].load();
+		// if data at idx is marked, that means idx is larger than the actual size of the vector.
+		// so, we should update thread-local size to idx since vector's actual size can be at most idx
+		if (data == MARKED && idx < comb_vector::info->offset)
+			comb_vector::info->offset = idx;
 	} while (!((*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(data, val)));
 
 	return true;
@@ -311,7 +326,7 @@ bool comb_vector::add_to_batch(descr *d) {
 int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	Queue *queue = comb_vector::global_vector->batch.load();
 	uint64_t head, new_head;
-	int hindex, hcount, old_value, bucket, addr;
+	int hindex, hcount, old_value, bucket, addr, i, j;
 	write_descr *writeop;
 	descr *curr_d;
 
@@ -328,59 +343,73 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 		// get current vector descriptor
 		curr_d = global_vector->vector_desc.load();
 
-		// get bucket that -------- and make sure there's enough room to fit them;
-		// if there's not, allocate enough buckets for them
-		bucket = get_bucket(curr_d->offset + hcount);
-		if (comb_vector::global_vector->vdata[bucket].load() == nullptr)
-			allocate_bucket(bucket);
-
+		// get index and value of the next node to insert at in the vector
 		addr = curr_d->offset + hcount;
 		old_value = read_unsafe(addr);
 
-		// if we've reached the end of the combining queue, we're done with this loop
+		// make sure there's enough room to add more elements to the vector
+		bucket = get_bucket(addr);
+		if (comb_vector::global_vector->vdata[bucket].load() == nullptr)
+			allocate_bucket(bucket);
+
+		// if we've reached the end of the combining queue, we're done combining
 		if (hindex == queue->tail.load() || hindex == QSize)
 			break;
 
-		// attempt to write that the write descriptor we're currently looking at has been completed
+		// if current index in queue holds EMPTY_SLOT, that means that the add_to_batch
+		// operation has not completed yet; put FINISHED_SLOT to make the add_to_batch fail since we
+		// don't want to wait around for it to finish, then move on to the next item in the queue
 		if (queue->items[hindex].compare_exchange_strong(comb_vector::EMPTY_SLOT, comb_vector::FINISHED_SLOT)) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount);
 			queue->head.compare_exchange_strong(head, new_head);
 			continue;
 		}
 
-		// load last write descriptor in the combining queue
+		// get the writeop at the current index in the queue so that we can complete it
 		writeop = queue->items[hindex].load();
 
+		// if it holds FINISHED_SLOT, that means that this is the spot of an interrupted add_to_batch
+		// operation, so just move on to the next item in the queue since there's nothing to do here
 		if (writeop == comb_vector::FINISHED_SLOT) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount);
 			queue->head.compare_exchange_strong(head, new_head);
 			continue;
 		}
 
+		// if writeop has already been completed, increment number of successful operations
+		// and move on to the next item in the queue
 		if (!(writeop->pending)) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount+1);
 			queue->head.compare_exchange_strong(head, new_head);
 			continue;
 		}
 
-		// if writeop is pending, CAS old value with new value (first flag of 0 tells write_helper
-		// to only try CAS once and second flag of 0 tells it to not check bounds)
-		if (writeop->pending && queue->head.load() == head)
-			write_helper(old_value, writeop->v_new, 0, 0);
+		// if writeop is pending, try to complete it
+		if (writeop->pending && queue->head.load() == head) {
+			i = get_bucket(addr), j = get_idx_within_bucket(addr);
+			(*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(old_value, writeop->v_new);
+		}
 
+		// by this point, we either completed this writeop or another thread did.
+		// mark that the writeop has been completed, increment number of successful operations,
+		// and move on to the next item in the queue
 		new_head = comb_vector::combine_into_64_bits(hindex+1, hcount+1);
 		queue->head.compare_exchange_strong(head, new_head);
 		writeop->pending = false;
 	}
 
-	// get new size of vector,which is the current size of the vector plus however
-	// many combine operations have been successfully completed
+	// get new size of vector, which is the size of the vector before combining
+	// plus however many operations we successfully completed (we just add here since each
+	// writeop in the queue is a pushback, so each adds one to the size)
 	int new_size = curr_d->offset + hcount;
 
 	// if current descriptor has a write op of popback, subtract one from size
 	// to complete the popback
 	if (curr_d->op == op_type::POP)
 		new_size--;
+
+	// update thread local copy of size
+	comb_vector::info->offset = new_size;
 
 	// create new descriptor with the new size and no write op since popback write
 	// op was already taken care of above (if there was one)
@@ -389,10 +418,9 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	// attempt to swap old descriptor with the new descriptor
 	comb_vector::global_vector->vector_desc.compare_exchange_strong(curr_d, new_d);
 
-	// if we need to return the last value in the vector (in the case of being called
-	// by popback), get the last value and mark the node that holds it
+	// if called by popback, we need to return the value associated with the last
+	// element that was successfully added to the combining queue
 	if (!dont_need_to_return) {
-		// may need to replace with curr_d or new_d -----------
 		int index = curr_d->offset + hcount;
 		int elem = comb_vector::read_unsafe(index);
 		comb_vector::marknode(index);
@@ -430,11 +458,18 @@ void comb_vector::allocate_bucket(int bucket_idx) {
 	}
 }
 
-// reads value at given with no bounds checking, pls don't give bad indices
+// reads value at given index with no bounds checking
 int comb_vector::read_unsafe(int idx) {
 	// get and return data at the given index
 	int i = get_bucket(idx), j = get_idx_within_bucket(idx);
-	return (*((global_vector->vdata[i]).load()))[j].load();
+	int data = (*((global_vector->vdata[i]).load()))[j].load();
+
+	// if data at idx is marked, that means idx is larger than the actual size of the vector.
+	// so, we should update thread-local size to idx since vector's actual size can be at most idx
+	if (data == MARKED && idx < comb_vector::info->offset)
+		comb_vector::info->offset = idx;
+
+	return data;
 }
 
 /////////////////////////////////
