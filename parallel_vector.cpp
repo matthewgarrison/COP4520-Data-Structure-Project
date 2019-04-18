@@ -1,63 +1,58 @@
 #include "parallel_vector.h"
-#include <iostream>
 
 // define static variables
-th_info __thread *comb_vector::info;
-write_descr *comb_vector::EMPTY_SLOT;
-write_descr *comb_vector::FINISHED_SLOT;
+th_info thread_local *comb_vector::info = new th_info();
+write_descr *comb_vector::EMPTY_SLOT = new write_descr(-1, -1, -1);
+write_descr *comb_vector::FINISHED_SLOT = new write_descr(-2, -2, -2);
+
+int percent_pushback, percent_popback, percent_read, percent_write;
+
+void* run_thread(void* arg) {
+    // cast argument as a pointer to shared STM vector object
+    comb_vector *vec = reinterpret_cast<comb_vector*>(arg);
+
+    // execute NUM_OPS total operations on the vector
+    int i, j;
+    for (i=0; i<num_op_loops; i++) {
+	    // execute pushback operations
+	    for (j=0; j<percent_pushback; j++)
+		    vec->pushback(j);
+	    // execute read operations
+	    for (j=0; j<percent_read; j++)
+		    vec->read(j);
+	    // execute write operations
+	    for (j=0; j<percent_write; j++)
+		    vec->write(j, 0);
+	    // execute popback operations
+	    for (j=0; j<percent_popback; j++)
+		    vec->popback();
+    }
+}
 
 int main(int argc, char **argv)
 {
-	std::cout << "creating new vector..." << std::endl;
+	int num_threads = 8;
+	percent_pushback = 25;
+	percent_popback = 25;
+	percent_read = 25;
+	percent_write = 25;
+	// create shared vector
 	comb_vector *vec = new comb_vector(10);
 
-	for (int i=0; i<20; i++) {
-		std::cout << "pushing " + std::to_string(i) + "..." << std::endl;
-		vec->pushback(i);
-	}
+	pthread_t tid[256];
+	// actually create the threads
+	for (uint32_t j = 1; j < num_threads; j++)
+			pthread_create(&tid[j], NULL, &run_thread, vec);
 
-	std::cout << "\ncontents of vector" << std::endl;
-	int val;
-	for (int i=0; i<20; i++) {
-		val = vec->read(i);
-		std::cout << val << std::endl;
-	}
+	// all of the other threads should be queued up, waiting to run the
+	// benchmark, but they can't until this thread starts the benchmark
+	// too...
+	run_thread(vec);
 
-	std::cout << std::endl;
-	int ind = 0;
-	val = -120;
-	std::cout << "writing " << val << " to index " << ind << std::endl;
-	vec->write(ind, val);
-	ind = 3;
-	val = 123;
-	std::cout << "writing " << val << " to index " << ind << std::endl;
-	vec->write(ind, val);
-	ind = 19;
-	val = 72;
-	std::cout << "writing " << val << " to index " << ind << std::endl;
-	vec->write(ind, val);
-	ind = 20;
-	val = -111;
-	std::cout << "writing " << val << " to index " << ind << std::endl;
-	vec->write(ind, val);
-	ind = -1;
-	val = 55;
-	std::cout << "writing " << val << " to index " << ind << std::endl;
-	vec->write(ind, val);
-	ind = 1000;
-	val = 26;
-	std::cout << "writing " << val << " to index " << ind << std::endl;
-	vec->write(ind, val);
-
-	std::cout << "\nsize of vector " << vec->get_size() << std::endl;
-
-	std::cout << "\npopping all elements from vector" << std::endl;
-	for (int i=0; i<20; i++) {
-		val = vec->popback();
-		std::cout << val << std::endl;
-	}
-
-	std::cout << "\nsize of vector " << vec->get_size() << std::endl;
+	// everyone should be done.  Join all threads so we don't leave anything
+	// hanging around
+	for (uint32_t k = 1; k < num_threads; k++)
+			pthread_join(tid[k], NULL);
 
 	return 0;
 }
@@ -410,6 +405,8 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 		curr_d = global_vector->vector_desc.load();
 
 		// get index and value of the next node to insert at in the vector
+		printf("OFFSET = %d, SIZE = %d, HCOUNT = %d\n", curr_d->offset, curr_d->size, hcount);
+		fflush(stdout);
 		addr = curr_d->offset + hcount;
 		old_value = read_unsafe(addr);
 

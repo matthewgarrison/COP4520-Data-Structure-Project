@@ -7,12 +7,17 @@
 #include <vector>
 #include <array>
 #include <climits>
+#include <iostream>
+#include <pthread.h>
 
 // We'll have to decide on a maximum queue size
 #define QSize 100000
 #define NUM_LEVELS 30
 #define FBS 2
 #define MARKED INT_MIN
+
+const int num_ops = 500000;
+const int num_op_loops = num_ops / 100;
 
 enum op_type {
 	PUSH,
@@ -23,7 +28,7 @@ enum op_type {
 class write_descr {
 	public:
 		bool pending;
-		size_t pos;
+		int pos;
 		int v_old;
 		int v_new;
 		write_descr(int o, int n, int p);
@@ -43,8 +48,8 @@ class Queue {
 class descr {
 	public:
 		write_descr *write_op;
-		size_t size;
-		size_t offset;
+		int size;
+		int offset;
 		Queue *batch;
 		op_type op;
 		descr(int s, write_descr *wd, op_type ot);
@@ -62,7 +67,7 @@ class vector_vars {
 class th_info {
 	public:
 		Queue *q;
-		size_t offset;
+		int offset;
 		Queue *batch;
 		th_info();
 };
@@ -70,7 +75,7 @@ class th_info {
 class comb_vector {
 	private:
 		vector_vars *global_vector;
-		static __thread th_info *info;
+		static thread_local th_info *info;
 
 		bool add_to_batch(descr *d);
 		int combine(th_info *info, descr *d, bool dont_need_to_return);
