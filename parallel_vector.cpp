@@ -94,7 +94,6 @@ int comb_vector::popback() {
 		}
 	}
 
-	comb_vector::info->offset = new_d->size;
 	return elem;
 }
 
@@ -169,7 +168,6 @@ void comb_vector::pushback(int val) {
 	}
 
 	complete_write(new_d->write_op);
-	comb_vector::info->offset = new_d->size;
 }
 
 // reserves space in the vector for n elements
