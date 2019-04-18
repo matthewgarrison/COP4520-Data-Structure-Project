@@ -71,7 +71,7 @@ comb_vector::comb_vector() {
 	comb_vector(128);
 }
 
-comb_vector::comb_vector(int n): global_vector() {
+comb_vector::comb_vector(int n) {
 	global_vector = new vector_vars();
 	allocate_bucket(0);
 	reserve(n);
