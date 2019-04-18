@@ -9,25 +9,55 @@ write_descr *comb_vector::FINISHED_SLOT;
 int main(int argc, char **argv)
 {
 	std::cout << "creating new vector..." << std::endl;
-	fflush(stdout);
 	comb_vector *vec = new comb_vector(10);
-	std::cout << "made it past initialization" << std::endl;
-	fflush(stdout);
 
 	for (int i=0; i<20; i++) {
 		std::cout << "pushing " + std::to_string(i) + "..." << std::endl;
-		fflush(stdout);
 		vec->pushback(i);
 	}
 
 	std::cout << "\ncontents of vector" << std::endl;
-	fflush(stdout);
 	int val;
 	for (int i=0; i<20; i++) {
 		val = vec->read(i);
 		std::cout << val << std::endl;
-		fflush(stdout);
 	}
+
+	std::cout << std::endl;
+	int ind = 0;
+	val = -120;
+	std::cout << "writing " << val << " to index " << ind << std::endl;
+	vec->write(ind, val);
+	ind = 3;
+	val = 123;
+	std::cout << "writing " << val << " to index " << ind << std::endl;
+	vec->write(ind, val);
+	ind = 19;
+	val = 72;
+	std::cout << "writing " << val << " to index " << ind << std::endl;
+	vec->write(ind, val);
+	ind = 20;
+	val = -111;
+	std::cout << "writing " << val << " to index " << ind << std::endl;
+	vec->write(ind, val);
+	ind = -1;
+	val = 55;
+	std::cout << "writing " << val << " to index " << ind << std::endl;
+	vec->write(ind, val);
+	ind = 1000;
+	val = 26;
+	std::cout << "writing " << val << " to index " << ind << std::endl;
+	vec->write(ind, val);
+
+	std::cout << "\nsize of vector " << vec->get_size() << std::endl;
+
+	std::cout << "\npopping all elements from vector" << std::endl;
+	for (int i=0; i<20; i++) {
+		val = vec->popback();
+		std::cout << val << std::endl;
+	}
+
+	std::cout << "\nsize of vector " << vec->get_size() << std::endl;
 
 	return 0;
 }
