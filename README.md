@@ -28,9 +28,10 @@ bench/mainSSB64
 It should output something like `x = 40000`.
 
 ### Running STM Implementation
-Now, move the `stm_vector.cpp` and `stm_vector.h` to `rstm/bench` (you can remove `main.cpp` from there now). In `rstm/bench/CMakeLists.txt`, replace `main` with `stm_vector` in the list starting on line 22. Then you can run the STM implementation by running:
+Now, move the `stm_vector.cpp` and `stm_vector.h` files to `rstm/bench` (you can remove `main.cpp` from there now). In `rstm/bench/CMakeLists.txt`, replace `main` with `stm_vector` in the list starting on line 22. Also, move `run_stm.py` to `rstm_build/`. Then, you can run the STM implementation by running:
 ```
 cd rstm_build
 make
-bench/stm_vectorSSB64
+python3 run_stm.py
 ```
+The results will be located in the directory you end up in (`rstm_build/`) under the name `results.txt`. If you re-run the test, make sure to delete or move `results.txt` before re-running, as the output will be appended to `results.txt` if it already exists.
