@@ -54,6 +54,8 @@ int main(int argc, char **argv)
 	for (uint32_t k = 1; k < num_threads; k++)
 			pthread_join(tid[k], NULL);
 
+	printf("end of main\n");
+	fflush(stdout);
 	return 0;
 }
 
@@ -387,9 +389,11 @@ bool comb_vector::add_to_batch(descr *d) {
 int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	Queue *queue = comb_vector::global_vector->batch.load();
 	uint64_t head, new_head;
-	int hindex, hcount, old_value, bucket, addr, i, j;
+	int ticket, hindex, hcount, old_value, bucket, addr, i, j;
 	write_descr *writeop;
-	descr *curr_d;
+
+	if (d->offset == -1)
+		d->offset = d->size;
 
 	// first, make sure that the combining queue has been closed
 	if (queue == nullptr || !queue->closed)
@@ -401,11 +405,8 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 		hindex = (int)comb_vector::get_first_32_bits(head);
 		hcount = (int)comb_vector::get_second_32_bits(head);
 
-		// get current vector descriptor
-		curr_d = global_vector->vector_desc.load();
-
 		// get index of the next node to insert at in the vector
-		addr = curr_d->offset + hcount;
+		addr = d->offset + hcount;
 
 		// make sure there's enough room to add more elements to the vector
 		bucket = get_bucket(addr);
@@ -414,22 +415,23 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 
 		// read value of the next node to insert at in the vector
 		old_value = read_unsafe(addr);
+		ticket = hindex;
 
 		// if we've reached the end of the combining queue, we're done combining
-		if (hindex == queue->tail.load() || hindex == QSize)
+		if (ticket == queue->tail.load() || ticket == QSize)
 			break;
 
 		// if current index in queue holds EMPTY_SLOT, that means that the add_to_batch
 		// operation has not completed yet; put FINISHED_SLOT to make the add_to_batch fail since we
 		// don't want to wait around for it to finish, then move on to the next item in the queue
-		if (queue->items[hindex].compare_exchange_strong(comb_vector::EMPTY_SLOT, comb_vector::FINISHED_SLOT)) {
+		if (queue->items[ticket].compare_exchange_strong(comb_vector::EMPTY_SLOT, comb_vector::FINISHED_SLOT)) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount);
 			queue->head.compare_exchange_strong(head, new_head);
 			continue;
 		}
 
 		// get the writeop at the current index in the queue so that we can complete it
-		writeop = queue->items[hindex].load();
+		writeop = queue->items[ticket].load();
 
 		// if it holds FINISHED_SLOT, that means that this is the spot of an interrupted add_to_batch
 		// operation, so just move on to the next item in the queue since there's nothing to do here
@@ -464,11 +466,11 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	// get new size of vector, which is the size of the vector before combining
 	// plus however many operations we successfully completed (we just add here since each
 	// writeop in the queue is a pushback, so each adds one to the size)
-	int new_size = curr_d->offset + hcount;
+	int new_size = d->offset + hcount;
 
 	// if current descriptor has a write op of popback, subtract one from size
 	// to complete the popback
-	if (curr_d->op == op_type::POP)
+	if (d->op == op_type::POP)
 		new_size--;
 
 	// update thread local copy of size
@@ -479,13 +481,14 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	descr *new_d = new descr(new_size, nullptr, op_type::NONE);
 
 	// attempt to swap old descriptor with the new descriptor
-	comb_vector::global_vector->vector_desc.compare_exchange_strong(curr_d, new_d);
-	comb_vector::global_vector->batch.compare_exchange_strong(curr_d->batch, nullptr);
+	comb_vector::global_vector->vector_desc.compare_exchange_strong(d, new_d);
+	// make combining queue null so we stop combining
+	comb_vector::global_vector->batch.compare_exchange_strong(queue, nullptr);
 
 	// if called by popback, we need to return the value associated with the last
 	// element that was successfully added to the combining queue
 	if (!dont_need_to_return) {
-		int index = curr_d->offset + hcount;
+		int index = d->offset + hcount;
 		int elem = comb_vector::read_unsafe(index);
 		comb_vector::marknode(index);
 		return elem;
