@@ -404,9 +404,7 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 		// get current vector descriptor
 		curr_d = global_vector->vector_desc.load();
 
-		// get index and value of the next node to insert at in the vector
-		printf("OFFSET = %d, SIZE = %d, HCOUNT = %d\n", curr_d->offset, curr_d->size, hcount);
-		fflush(stdout);
+		// get index of the next node to insert at in the vector
 		addr = curr_d->offset + hcount;
 
 		// make sure there's enough room to add more elements to the vector
@@ -414,6 +412,7 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 		if (comb_vector::global_vector->vdata[bucket].load() == nullptr)
 			allocate_bucket(bucket);
 
+		// read value of the next node to insert at in the vector
 		old_value = read_unsafe(addr);
 
 		// if we've reached the end of the combining queue, we're done combining
@@ -481,6 +480,7 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 
 	// attempt to swap old descriptor with the new descriptor
 	comb_vector::global_vector->vector_desc.compare_exchange_strong(curr_d, new_d);
+	comb_vector::global_vector->batch.compare_exchange_strong(curr_d->batch, nullptr);
 
 	// if called by popback, we need to return the value associated with the last
 	// element that was successfully added to the combining queue
