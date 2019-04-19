@@ -10,19 +10,20 @@
 #include "../include/api/api.hpp"
 #include "stm_vector.h"
 #include <cmath>
+#include <fstream>
 using namespace std;
 
 // constant across all tests
 const int NUM_TRANSACTIONS = 500000;
 const int NUM_OP_LOOPS = NUM_TRANSACTIONS / 100;
 
-// vary these for performance tests
-const int THREAD_COUNT = 4;
-const int TRANSACTION_SIZE = 1;
-const int PERCENT_PUSHBACK = 50;
-const int PERCENT_POPBACK = 50;
-const int PERCENT_READ = 0;
-const int PERCENT_WRITE = 0;
+// default values
+const int THREAD_COUNT = 8;
+const int TRANSACTION_SIZE = 4;
+int percent_pushback = 25;
+int percent_popback = 25;
+int percent_read = 25;
+int percent_write = 25;
 
 Config::Config() :
     bmname(""),
@@ -54,16 +55,16 @@ void* run_thread(void* arg) {
     int i, j;
     for (i=0; i<NUM_OP_LOOPS; i++) {
 	    // execute pushback operations
-	    for (j=0; j<PERCENT_PUSHBACK; j++)
+	    for (j=0; j<percent_pushback; j++)
 		    vec->pushback(j);
 	    // execute read operations
-	    for (j=0; j<PERCENT_READ; j++)
+	    for (j=0; j<percent_read; j++)
 		    vec->read(j);
 	    // execute write operations
-	    for (j=0; j<PERCENT_WRITE; j++)
+	    for (j=0; j<percent_write; j++)
 		    vec->write(j, 0);
 	    // execute popback operations
-	    for (j=0; j<PERCENT_POPBACK; j++)
+	    for (j=0; j<percent_popback; j++)
 		    vec->popback();
     }
 
@@ -72,6 +73,25 @@ void* run_thread(void* arg) {
 }
 
 int main(int argc, char** argv) {
+    int tx_size = TRANSACTION_SIZE, num_threads = THREAD_COUNT;
+
+    // if passed in command-line arguments for number of threads, transaction size,
+    // and operation ratios, process and use them
+    if (argc > 1) {
+      // get and set thread count
+      num_threads = atoi(argv[1]);
+      CFG.threads = num_threads;
+
+      // get and set transaction size
+      tx_size = atoi(argv[2]);
+      CFG.ops = tx_size;
+
+      // get and set operation ratios
+      percent_pushback = atoi(argv[3]);
+      percent_popback = atoi(argv[4]);
+      percent_read = atoi(argv[5]);
+      percent_write = atoi(argv[6]);
+    }
     TM_SYS_INIT();
 
     // get start time of execution
@@ -111,11 +131,15 @@ int main(int argc, char** argv) {
     chrono::duration<double> elapsed = end - start;
 
     // print results
-    cout << "Number of threads: " << THREAD_COUNT << "\n";
-    cout << "Transaction size: " << TRANSACTION_SIZE << "\n";
-    cout << "Op ratio: " << PERCENT_PUSHBACK << "\% pushback, " << PERCENT_POPBACK << "\% popback, " 
-	    << PERCENT_READ << "\% read, " << PERCENT_WRITE << "\% write\n";
-    cout << "Total elapsed time: " << elapsed.count() << " seconds\n";
+    ofstream results;
+    results.open ("results.txt", ios::out | ios::app);
+    if (num_threads == 1) {
+	    results << "Transaction size of " << tx_size << "; ";
+	    results << percent_pushback << "\% pushback, " << percent_popback << "\% popback, "
+            	<< percent_read << "\% read, " << percent_write << "\% write\n";
+    }
+    results << elapsed.count() << "\n";
+    results.close();
 
     // And call sys shutdown stuff
     TM_SYS_SHUTDOWN();
@@ -267,7 +291,7 @@ void stm_vector::write(int idx, int val) {
 	TM_BEGIN(atomic) {
 		// get current value of size
 		size = TM_READ(_size);
-		// check that given index is within bounds 
+		// check that given index is within bounds
 		if (idx >= size) throw std::out_of_range("write() with index " + std::to_string(idx) + " out of bounds.");
 		// write given value at given index
 		TM_WRITE(array[i][j].val, val);
