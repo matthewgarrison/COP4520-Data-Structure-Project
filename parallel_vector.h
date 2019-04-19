@@ -9,9 +9,10 @@
 #include <climits>
 #include <iostream>
 #include <pthread.h>
+#include <chrono>
 
 // We'll have to decide on a maximum queue size
-#define QSize 100000
+#define QSize 16
 #define NUM_LEVELS 30
 #define FBS 2
 #define MARKED INT_MIN

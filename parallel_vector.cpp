@@ -31,6 +31,8 @@ void* run_thread(void* arg) {
 
 int main(int argc, char **argv)
 {
+	// get start time of execution
+	auto start = std::chrono::high_resolution_clock::now();
 	int num_threads = 8;
 	percent_pushback = 25;
 	percent_popback = 25;
@@ -54,8 +56,17 @@ int main(int argc, char **argv)
 	for (uint32_t k = 1; k < num_threads; k++)
 			pthread_join(tid[k], NULL);
 
-	printf("end of main\n");
-	fflush(stdout);
+	// get end time of exection
+	auto end = std::chrono::high_resolution_clock::now();
+	// calculate elapsed execution time
+	std::chrono::duration<double> elapsed = end - start;
+
+	// print results
+	std::cout << "Number of threads: " << num_threads << "\n";
+	std::cout << "Op ratio: " << percent_pushback << "\% pushback, " << percent_popback << "\% popback, "
+	    << percent_read << "\% read, " << percent_write << "\% write\n";
+	std::cout << "Total elapsed time: " << elapsed.count() << " seconds\n";
+
 	return 0;
 }
 
@@ -159,6 +170,7 @@ int comb_vector::popback() {
 		}
 	}
 
+	comb_vector::info->offset = new_d->size;
 	return elem;
 }
 
@@ -204,7 +216,7 @@ void comb_vector::pushback(int val) {
 			// add val then. If it fails, we'll do another loop and add writeOp
 			// to a new combining queue (because will_add_to_batch is true).
 			new_d->size = curr_d->size;
-			new_d->write_op = NULL;
+			new_d->write_op = nullptr;
 			help_with_combine = true;
 			comb_vector::info->q = nullptr;
 		}
@@ -233,6 +245,7 @@ void comb_vector::pushback(int val) {
 	}
 
 	complete_write(new_d->write_op);
+	comb_vector::info->offset = new_d->size;
 }
 
 // reserves space in the vector for n elements
@@ -389,7 +402,7 @@ bool comb_vector::add_to_batch(descr *d) {
 int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 	Queue *queue = comb_vector::global_vector->batch.load();
 	uint64_t head, new_head;
-	int ticket, hindex, hcount, old_value, bucket, addr, i, j;
+	int ticket, hindex, hcount, old_value, bucket, i, j;
 	write_descr *writeop;
 
 	if (d->offset == -1)
@@ -405,18 +418,14 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 		hindex = (int)comb_vector::get_first_32_bits(head);
 		hcount = (int)comb_vector::get_second_32_bits(head);
 
-		// get index of the next node to insert at in the vector
-		addr = d->offset + hcount;
-
 		// make sure there's enough room to add more elements to the vector
-		bucket = get_bucket(addr);
+		bucket = get_bucket(d->offset + hcount);
 		if (comb_vector::global_vector->vdata[bucket].load() == nullptr)
 			allocate_bucket(bucket);
 
 		// read value of the next node to insert at in the vector
-		old_value = read_unsafe(addr);
+		old_value = read_unsafe(d->offset + hcount);
 		ticket = hindex;
-
 		// if we've reached the end of the combining queue, we're done combining
 		if (ticket == queue->tail.load() || ticket == QSize)
 			break;
@@ -430,12 +439,10 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 			continue;
 		}
 
-		// get the writeop at the current index in the queue so that we can complete it
-		writeop = queue->items[ticket].load();
 
 		// if it holds FINISHED_SLOT, that means that this is the spot of an interrupted add_to_batch
 		// operation, so just move on to the next item in the queue since there's nothing to do here
-		if (writeop == comb_vector::FINISHED_SLOT) {
+		if (queue->items[ticket].load() == comb_vector::FINISHED_SLOT) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount);
 			queue->head.compare_exchange_strong(head, new_head);
 			continue;
@@ -443,6 +450,7 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 
 		// if writeop has already been completed, increment number of successful operations
 		// and move on to the next item in the queue
+		writeop = queue->items[ticket].load();
 		if (!(writeop->pending)) {
 			new_head = comb_vector::combine_into_64_bits(hindex+1, hcount+1);
 			queue->head.compare_exchange_strong(head, new_head);
@@ -451,7 +459,7 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 
 		// if writeop is pending, try to complete it
 		if (writeop->pending && queue->head.load() == head) {
-			i = get_bucket(addr), j = get_idx_within_bucket(addr);
+			i = get_bucket(d->offset + hcount), j = get_idx_within_bucket(d->offset + hcount);
 			(*((global_vector->vdata[i]).load()))[j].compare_exchange_strong(old_value, writeop->v_new);
 		}
 
