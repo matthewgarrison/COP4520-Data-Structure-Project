@@ -213,7 +213,7 @@ void comb_vector::pushback(int val) {
 		// Determine which bucket this element will go in.
 		int bucket_idx = get_bucket(curr_d->size);
 		// If the appropriate bucket doesn't exist, create it.
-		if (global_vector->vdata[bucket_idx] == nullptr)
+		if (global_vector->vdata[bucket_idx].load() == nullptr)
 			comb_vector::allocate_bucket(bucket_idx);
 
 		// Create a new Descriptor and WriteDescriptor.
