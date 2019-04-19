@@ -31,42 +31,62 @@ void* run_thread(void* arg) {
 
 int main(int argc, char **argv)
 {
-	// get start time of execution
-	auto start = std::chrono::high_resolution_clock::now();
-	int num_threads = 8;
-	percent_pushback = 25;
-	percent_popback = 25;
-	percent_read = 25;
-	percent_write = 25;
-	// create shared vector
-	comb_vector *vec = new comb_vector(10);
+	std::chrono::duration<double> elapsed;
+	int num_threads, i, j, k;
+	double totalTime, avgTime;
+	// initialize operatio ratios
+	int ratios[3][4] = { {25, 25, 25, 25}, {60, 20, 10, 10}, {40, 20, 40, 0} };
 
-	pthread_t tid[256];
-	// actually create the threads
-	for (uint32_t j = 1; j < num_threads; j++)
-			pthread_create(&tid[j], NULL, &run_thread, vec);
 
-	// all of the other threads should be queued up, waiting to run the
-	// benchmark, but they can't until this thread starts the benchmark
-	// too...
-	run_thread(vec);
+	// run trials with the 3 different operation ratios specified in ratios
+	for (i = 0; i < 3; i++)
+	{
+		// get operation ratios for this trial
+		percent_pushback = ratios[i][0];
+		percent_popback = ratios[i][1];
+		percent_read = ratios[i][2];
+		percent_write = ratios[i][3];
+		std::cout << percent_pushback << "\% pushback, " << percent_popback << "\% popback, "
+			<< percent_read << "\% read, " << percent_write << "\% write\n";
+		std::cout << "-----------------------------------------------\n";
+		// run with 1, 2, 4, and 8 threads
+		for (num_threads = 1; num_threads <= 8; num_threads *=2)
+		{
+			totalTime = 0;
+			// run NUM_TRIALS times and average the results
+			for (j=0; j<NUM_TRIALS; j++)
+			{
+				// start clock
+				auto start = std::chrono::high_resolution_clock::now();
+				// create shared vector
+				comb_vector *vec = new comb_vector(10);
 
-	// everyone should be done.  Join all threads so we don't leave anything
-	// hanging around
-	for (uint32_t k = 1; k < num_threads; k++)
-			pthread_join(tid[k], NULL);
+				// create the threads
+				pthread_t tid[256];
+				for (k = 1; k < num_threads; k++)
+					pthread_create(&tid[k], NULL, &run_thread, vec);
 
-	// get end time of exection
-	auto end = std::chrono::high_resolution_clock::now();
-	// calculate elapsed execution time
-	std::chrono::duration<double> elapsed = end - start;
+				// start the threads
+				run_thread(vec);
 
-	// print results
-	std::cout << "Number of threads: " << num_threads << "\n";
-	std::cout << "Op ratio: " << percent_pushback << "\% pushback, " << percent_popback << "\% popback, "
-	    << percent_read << "\% read, " << percent_write << "\% write\n";
-	std::cout << "Total elapsed time: " << elapsed.count() << " seconds\n";
+				// join all threads to wait for them to be done
+				for (k = 1; k < num_threads; k++)
+					pthread_join(tid[k], NULL);
 
+				// get end time of exection
+				auto end = std::chrono::high_resolution_clock::now();
+
+				// calculate elapsed execution time
+				std::chrono::duration<double> elapsed = end - start;
+
+				// add to totalTime so that we can average the results later
+				totalTime += elapsed.count();
+			}
+			// display average execution time per NUM_OPERATIONS for the current number of threads
+			avgTime = totalTime / (NUM_TRIALS * num_threads);
+			std::cout << avgTime << std::endl;
+		}
+	}
 	return 0;
 }
 

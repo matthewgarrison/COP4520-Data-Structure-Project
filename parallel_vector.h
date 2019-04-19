@@ -16,6 +16,7 @@
 #define NUM_LEVELS 30
 #define FBS 2
 #define MARKED INT_MIN
+#define NUM_TRIALS 5
 
 const int num_ops = 500000;
 const int num_op_loops = num_ops / 100;
