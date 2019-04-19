@@ -408,12 +408,13 @@ int comb_vector::combine(th_info *info, descr *d, bool dont_need_to_return) {
 		printf("OFFSET = %d, SIZE = %d, HCOUNT = %d\n", curr_d->offset, curr_d->size, hcount);
 		fflush(stdout);
 		addr = curr_d->offset + hcount;
-		old_value = read_unsafe(addr);
 
 		// make sure there's enough room to add more elements to the vector
 		bucket = get_bucket(addr);
 		if (comb_vector::global_vector->vdata[bucket].load() == nullptr)
 			allocate_bucket(bucket);
+
+		old_value = read_unsafe(addr);
 
 		// if we've reached the end of the combining queue, we're done combining
 		if (hindex == queue->tail.load() || hindex == QSize)
