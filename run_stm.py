@@ -1,6 +1,7 @@
 import os
+import sys
 
-executable_path = "bench/stm_vectorSSB64"
+executable_path = sys.argv[1]
 ratios = [ "25 25 25 25", "60 20 10 10", "40, 20, 40, 0" ];
 transaction_sizes = ["1", "2", "4"]
 thread_counts = ["1", "2", "4", "8"]
