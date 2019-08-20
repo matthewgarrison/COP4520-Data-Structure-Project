@@ -2,7 +2,9 @@
 
 Authors: John Albury, Dax Borde, Matthew Garrison, Richard Snyder
 
-Scalable Lock-Free Vector with Combining: https://ieeexplore.ieee.org/document/7967182
+In this project, we re-implement the lock-free vector described in [Scalable Lock-Free Vector with Combining](https://ieeexplore.ieee.org/document/7967182). Additionally, we implement a transactional version of this vector using the Rochester Software Transaction Memory (RSTM) library. Finally, we compare the performance of our two implementations to each other.
+
+You can view the final report [here](https://github.com/matthewgarrison/COP4520-Data-Structure-Project/blob/master/Final%20report.pdf).
 
 ## STM Implementation
 ### Setting up RSTM
